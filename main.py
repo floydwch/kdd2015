@@ -6,6 +6,12 @@ from sklearn.cross_validation import train_test_split
 from sklearn.metrics import roc_auc_score
 import h5py
 from keras.preprocessing import sequence
+from keras.optimizers import SGD, RMSprop, Adagrad
+from keras.utils import np_utils
+from keras.models import Sequential
+from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.embeddings import Embedding
+from keras.layers.recurrent import LSTM, GRU
 
 
 def load_csv():
@@ -35,6 +41,7 @@ def indexing(df):
 
 
 def df2array(df, df_ans):
+    maxlen = 100
     df = indexing(df)
     enrollments = df.groupby('enrollment_id').groups
     x_train = []
@@ -51,8 +58,8 @@ def df2array(df, df_ans):
             x_test.append(
                 array([df.iloc[event_id]['event'] for event_id in event_ids]))
 
-    x_train = sequence.pad_sequences(x_train)
-    x_test = sequence.pad_sequences(x_test)
+    x_train = sequence.pad_sequences(x_train, maxlen=maxlen)
+    x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
 
     return vstack(x_train), array(y_train), vstack(x_test)
 
@@ -76,12 +83,37 @@ def load_data():
     return df, df_ans, x_train, y_train, x_test
 
 
+def build_model():
+    max_features = 20000
+
+    model = Sequential()
+
+    model.add(Embedding(max_features, 256))
+    model.add(LSTM(256, 128))  # try using a GRU instead, for fun
+    model.add(Dropout(0.5))
+    model.add(Dense(128, 1))
+    model.add(Activation('sigmoid'))
+
+    model.compile(
+        loss='binary_crossentropy', optimizer='adam', class_mode="binary")
+
+    return model
+
+
 if __name__ == '__main__':
     df, df_ans, x_train, y_train, x_test = load_data()
-    x_train_cv, y_train_cv, x_test_cv, y_test_cv = train_test_split(
+    x_train_cv, x_test_cv, y_train_cv, y_test_cv = train_test_split(
         x_train, y_train, test_size=0.375, random_state=23)
 
-    predicts_cv = zeros((len('y_test_cv')))
+    model = build_model()
+
+    model.fit(
+        x_train_cv, y_train_cv,
+        batch_size=16,
+        nb_epoch=5
+    )
+
+    predicts_cv = model.predict_proba(x_test_cv, batch_size=16)
     print('roc_auc_score of cv %f' % roc_auc_score(y_test_cv, predicts_cv))
 
 
