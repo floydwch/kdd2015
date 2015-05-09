@@ -62,17 +62,15 @@ def load_data():
     if not os.path.isfile('data.h5'):
         x_train, y_train, x_test = df2array(df, df_ans)
 
-        h5f = h5py.File('data.h5', 'w')
-        h5f.create_dataset('x_train', data=x_train)
-        h5f.create_dataset('y_train', data=y_train)
-        h5f.create_dataset('x_test', data=x_test)
-        h5f.close()
+        with h5py.File('data.h5', 'w') as h5f:
+            h5f.create_dataset('x_train', data=x_train)
+            h5f.create_dataset('y_train', data=y_train)
+            h5f.create_dataset('x_test', data=x_test)
     else:
-        h5f = h5py.File('data.h5', 'r')
-        x_train = h5f['x_train'][:]
-        y_train = h5f['y_train'][:]
-        x_test = h5f['x_test'][:]
-        h5f.close()
+        with h5py.File('data.h5', 'r') as h5f:
+            x_train = h5f['x_train'][:]
+            y_train = h5f['y_train'][:]
+            x_test = h5f['x_test'][:]
 
     return df, df_ans, x_train, y_train, x_test
 
