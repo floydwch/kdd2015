@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import os.path
 import pandas as pd
-from numpy import array, vstack
+from numpy import array, vstack, zeros
 from sklearn.cross_validation import train_test_split
+from sklearn.metrics import roc_auc_score
 import h5py
 from keras.preprocessing import sequence
 
@@ -80,6 +81,8 @@ if __name__ == '__main__':
     x_train_cv, y_train_cv, x_test_cv, y_test_cv = train_test_split(
         x_train, y_train, test_size=0.375, random_state=23)
 
+    predicts_cv = zeros((len('y_test_cv')))
+    print('roc_auc_score of cv %f' % roc_auc_score(y_test_cv, predicts_cv))
 
 
 
