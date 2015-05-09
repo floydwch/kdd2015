@@ -2,6 +2,7 @@
 import os.path
 import pandas as pd
 from numpy import array, vstack
+from sklearn.cross_validation import train_test_split
 import h5py
 from keras.preprocessing import sequence
 
@@ -78,6 +79,8 @@ def load_data():
 
 if __name__ == '__main__':
     df, df_ans, x_train, y_train, x_test = load_data()
+    x_train_cv, y_train_cv, x_test_cv, y_test_cv = train_test_split(
+        x_train, y_train, test_size=0.375, random_state=23)
 
 
 
