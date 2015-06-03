@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
+
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import roc_auc_score
 
@@ -13,8 +15,10 @@ if __name__ == '__main__':
 
     model = build_model()
 
+    print('shape:', x_train_cv[0].shape)
+
     model.fit(
-        x_train_cv[:800], y_train_cv[:800],
+        x_train_cv[:10000], y_train_cv[:10000],
         batch_size=16,
         nb_epoch=5
     )

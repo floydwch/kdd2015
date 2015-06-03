@@ -6,13 +6,13 @@ from keras.layers.recurrent import LSTM
 
 
 def build_model():
-    max_features = 20000
+    max_features = 9
 
     model = Sequential()
 
     model.add(Embedding(max_features, 256))
     model.add(LSTM(256, 128))
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.2))
     model.add(Dense(128, 1))
     model.add(Activation('sigmoid'))
 

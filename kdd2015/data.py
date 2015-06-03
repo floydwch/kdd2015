@@ -10,6 +10,8 @@ from .feature import df2array
 def load_csv():
     log_train = pd.read_csv('log_train.csv')
     log_test = pd.read_csv('log_test.csv')
+    enrollment_train = pd.read_csv('enrollment_train.csv')
+    enrollment_test = pd.read_csv('enrollment_test.csv')
     df_ans = pd.read_csv('truth_train.csv', header=None)
 
     log_train['train'] = True
@@ -19,15 +21,18 @@ def load_csv():
     df_ans = df_ans.set_index('enrollment_id')
 
     df = pd.concat([log_train, log_test], ignore_index=True)
+    enrollments = pd.concat(
+        [enrollment_train, enrollment_test], ignore_index=True)
+    # df = pd.merge(df, enrollments, on='enrollment_id')
 
-    return df, df_ans
+    return df, df_ans, enrollments
 
 
 def load_data():
-    df, df_ans = load_csv()
+    df, df_ans, enrollments = load_csv()
 
     if not os.path.isfile('data.h5'):
-        x_train, y_train, x_test = df2array(df, df_ans)
+        x_train, y_train, x_test = df2array(df, df_ans, enrollments)
 
         with h5py.File('data.h5', 'w') as h5f:
             h5f.create_dataset('x_train', data=x_train)
