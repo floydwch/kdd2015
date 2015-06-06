@@ -18,10 +18,10 @@ if __name__ == '__main__':
     print('shape:', x_train_cv[0].shape)
 
     model.fit(
-        x_train_cv[:10000], y_train_cv[:10000],
-        batch_size=16,
+        x_train_cv[:2400, :200], y_train_cv[:2400, :200],
+        batch_size=24,
         nb_epoch=5
     )
 
-    predicts_cv = model.predict_proba(x_test_cv, batch_size=16)
+    predicts_cv = model.predict_proba(x_test_cv, batch_size=24)
     print('roc_auc_score of cv %f' % roc_auc_score(y_test_cv, predicts_cv))

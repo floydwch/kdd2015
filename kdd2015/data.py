@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
+# from datetime import datetime
 import os.path
 
 import pandas as pd
+# from numpy import datetime64
 import h5py
 
 from .feature import df2array
 
 
 def load_csv():
-    log_train = pd.read_csv('log_train.csv')
-    log_test = pd.read_csv('log_test.csv')
+    log_train = pd.read_csv('log_train.csv', parse_dates=[1])
+    log_test = pd.read_csv('log_test.csv', parse_dates=[1])
     enrollment_train = pd.read_csv('enrollment_train.csv')
     enrollment_test = pd.read_csv('enrollment_test.csv')
     df_ans = pd.read_csv('truth_train.csv', header=None)
