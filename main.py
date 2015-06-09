@@ -18,7 +18,7 @@ if __name__ == '__main__':
     print('shape:', x_train_cv[0].shape)
 
     model.fit(
-        x_train_cv[:8000], y_train_cv[:8000],
+        x_train_cv, y_train_cv,
         batch_size=8,
         nb_epoch=10,
         show_accuracy=True

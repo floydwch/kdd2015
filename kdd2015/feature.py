@@ -7,7 +7,7 @@ from multiprocessing import Pool
 
 # from dateutil import parser
 # from pandas import date_range
-from numpy import array, vstack, random
+from numpy import array, vstack, random, zeros
 from keras.preprocessing import sequence
 from more_itertools import chunked, flatten, first
 
@@ -63,11 +63,22 @@ def _choice(series):
 
 
 def _time_events(series):
-    events = list(
-        map(first, Counter(series).most_common(TIMESTEP_WINDOW_SIZE)))
+    # set_trace()
+    events = [0] * TIMESTEP_WINDOW_SIZE
 
-    for i in range(TIMESTEP_WINDOW_SIZE - len(events)):
-        events.append(0)
+    for feature_index, count in series.value_counts().iteritems():
+        events[feature_index] = count
+
+    login_hours = len(set(series.index.hour))
+    events[0] = login_hours
+
+    # events = list(
+    #     map(first, Counter(series).most_common(TIMESTEP_WINDOW_SIZE)))
+
+    # for i in range(TIMESTEP_WINDOW_SIZE - len(events)):
+    #     events.append(0)
+    # from ptpdb import set_trace
+    # set_trace()
 
     return events
 
