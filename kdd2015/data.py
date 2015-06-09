@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # from datetime import datetime
+# from functools import lru_cache
 import os.path
 
 import pandas as pd
@@ -9,6 +10,7 @@ import h5py
 from .feature import df2array
 
 
+# @lru_cache(maxsize=None)
 def load_csv():
     log_train = pd.read_csv('log_train.csv', parse_dates=[1])
     log_test = pd.read_csv('log_test.csv', parse_dates=[1])

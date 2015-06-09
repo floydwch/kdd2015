@@ -17,6 +17,8 @@ def time_bound(logs_df, enrollments_df, course_id):
     # import pdb; pdb.set_trace()
     start_time = times.min().normalize()
     end_time = times.max().normalize()
+    # if course_id == '81UZtt1JJwBFYMj5u38WNKCSVA4IJSDv':
+        # set_trace()
     return start_time, end_time
 
 
@@ -41,3 +43,8 @@ def all_time_bound():
         print(course_id, start_time, end_time, (end_time - start_time).days)
 
     print('len:', len(skip))
+
+
+def display_daily_distr():
+    logs_df, truth, enrollments_df = load_csv()
+    logs_df['time']
