@@ -16,7 +16,7 @@ from .analyze import time_bound
 # from ptpdb import set_trace
 
 
-TIMESTEP_WINDOW_SIZE = 8
+TIMESTEP_WINDOW_SIZE = 32
 
 
 def indexing(df):
@@ -67,10 +67,13 @@ def _time_events(series):
     events = [0] * TIMESTEP_WINDOW_SIZE
 
     for feature_index, count in series.value_counts().iteritems():
-        events[feature_index] = count
+        events[feature_index + 24] = count
+
+    for hour in series.index.hour:
+        events[hour] += 1
 
     login_hours = len(set(series.index.hour))
-    events[0] = login_hours
+    events[24] = login_hours
 
     # events = list(
     #     map(first, Counter(series).most_common(TIMESTEP_WINDOW_SIZE)))

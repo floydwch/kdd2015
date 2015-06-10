@@ -19,7 +19,7 @@ if __name__ == '__main__':
 
     model.fit(
         x_train_cv, y_train_cv,
-        batch_size=8,
+        batch_size=4,
         nb_epoch=10,
         show_accuracy=True
     )

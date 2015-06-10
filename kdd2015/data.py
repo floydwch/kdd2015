@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # from datetime import datetime
 # from functools import lru_cache
+from datetime import datetime
 import os.path
 
 import pandas as pd
@@ -30,6 +31,16 @@ def load_csv():
     # df = pd.merge(df, enrollments, on='enrollment_id')
 
     return df, df_ans, enrollments
+
+
+def to_submission(result):
+    submission = pd.read_csv('sampleSubmission.csv', header=None)
+    submission[1] = result
+    now = datetime.now()
+    submission.to_csv('%d-%d:%d:%d-submission.csv' % (
+        now.month, now.day, now.hour, now.minute),
+        header=None, index=False
+    )
 
 
 def load_data():

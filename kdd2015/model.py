@@ -26,15 +26,15 @@ def build_model():
     # )
     # # lstm1.connect(lstm1)
     # model.add(lstm1)
-    model.add(GRU(
-        8, 32,
+    model.add(LSTM(
+        32, 128,
         # activation='sigmoid',
         # inner_activation='hard_sigmoid',
         return_sequences=True
     ))
-    model.add(TimeDistributedDense(32, 16))
-    model.add(GRU(
-        16, 32,
+    model.add(TimeDistributedDense(128, 64))
+    model.add(LSTM(
+        64, 32,
         # activation='sigmoid',
         # inner_activation='hard_sigmoid',
         # return_sequences=True
