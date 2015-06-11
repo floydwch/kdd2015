@@ -31,7 +31,7 @@ def load_csv():
         [enrollment_train, enrollment_test], ignore_index=True)
     logs_df = pd.merge(logs_df, enrollments_df, how='left', on='enrollment_id')
 
-    logs_df['date'] = logs_df['time'].map(lambda x: x.normalize())
+    logs_df['date'] = logs_df['time'].map(pd.datetools.normalize_date)
 
     logs_df['source'] = logs_df['source'].astype('category')
     logs_df['event'] = logs_df['event'].astype('category')
