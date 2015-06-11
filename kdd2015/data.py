@@ -7,6 +7,7 @@ import os.path
 import pandas as pd
 # from numpy import datetime64
 import h5py
+from ipdb import set_trace
 
 from .feature import df2array
 
@@ -17,22 +18,33 @@ def load_csv():
     log_test = pd.read_csv('log_test.csv', parse_dates=[1])
     enrollment_train = pd.read_csv('enrollment_train.csv')
     enrollment_test = pd.read_csv('enrollment_test.csv')
-    df_ans = pd.read_csv('truth_train.csv', header=None)
+    truth_df = pd.read_csv('truth_train.csv', header=None)
 
     log_train['train'] = True
     log_test['train'] = False
 
-    df_ans.columns = ['enrollment_id', 'dropout']
-    # df_ans = df_ans.set_index('enrollment_id')
+    truth_df.columns = ['enrollment_id', 'dropout']
 
-    df = pd.concat([log_train, log_test], ignore_index=True)
-    df = pd.merge(df, df_ans, how='left', on='enrollment_id')
-    enrollments = pd.concat(
+    logs_df = pd.concat([log_train, log_test], ignore_index=True)
+    logs_df = pd.merge(logs_df, truth_df, how='left', on='enrollment_id')
+    enrollments_df = pd.concat(
         [enrollment_train, enrollment_test], ignore_index=True)
-    df = pd.merge(df, enrollments, how='left', on='enrollment_id')
-    # df = pd.merge(df, enrollments, on='enrollment_id')
+    logs_df = pd.merge(logs_df, enrollments_df, how='left', on='enrollment_id')
 
-    return df, df_ans, enrollments
+    logs_df['date'] = logs_df['time'].map(lambda x: x.normalize())
+
+    logs_df['source'] = logs_df['source'].astype('category')
+    logs_df['event'] = logs_df['event'].astype('category')
+    logs_df['object'] = logs_df['object'].astype('category')
+    logs_df['username'] = logs_df['username'].astype('category')
+    logs_df['course_id'] = logs_df['course_id'].astype('category')
+
+    selected_indices = ['enrollment_id', 'username', 'course_id', 'date']
+    logs_df = logs_df.set_index(selected_indices)
+
+    logs_df.sortlevel(inplace=True)
+
+    return logs_df, truth_df, enrollments_df
 
 
 def to_submission(result):
