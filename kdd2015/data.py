@@ -44,6 +44,17 @@ def load_csv():
 
     logs_df.sortlevel(inplace=True)
 
+    logs_df.to_pickle('logs_df.pickle')
+    truth_df.to_pickle('truth_df.pickle')
+    enrollments_df.to_pickle('enrollments_df.pickle')
+
+    return logs_df, truth_df, enrollments_df
+
+
+def load_pickle():
+    logs_df = pd.read_pickle('logs_df.pickle')
+    truth_df = pd.read_pickle('truth_df.pickle')
+    enrollments_df = pd.read_pickle('enrollments_df.pickle')
     return logs_df, truth_df, enrollments_df
 
 
@@ -58,10 +69,16 @@ def to_submission(result):
 
 
 def load_data():
-    df, df_ans, enrollments = load_csv()
+    if not (os.path.isfile('logs_df.pickle') or
+            os.path.isfile('truth_df.pickle') or
+            os.path.isfile('enrollments_df.pickle')):
+
+        logs_df, truth_df, enrollments_df = load_csv()
+    else:
+        logs_df, truth_df, enrollments_df = load_pickle()
 
     if not os.path.isfile('data.h5'):
-        x_train, y_train, x_test = df2array(df, df_ans, enrollments)
+        x_train, y_train, x_test = df2array(logs_df)
 
         with h5py.File('data.h5', 'w') as h5f:
             h5f.create_dataset('x_train', data=x_train)
@@ -73,4 +90,4 @@ def load_data():
             y_train = h5f['y_train'][:]
             x_test = h5f['x_test'][:]
 
-    return df, df_ans, x_train, y_train, x_test
+    return logs_df, truth_df, x_train, y_train, x_test
