@@ -26,23 +26,26 @@ def build_model():
     # )
     # # lstm1.connect(lstm1)
     # model.add(lstm1)
+    model.add(Dropout(0.5))
     model.add(LSTM(
-        32, 128,
-        # activation='sigmoid',
-        # inner_activation='hard_sigmoid',
-        return_sequences=True
-    ))
-    model.add(TimeDistributedDense(128, 64))
-    model.add(LSTM(
-        64, 32,
+        34, 64,
         # activation='sigmoid',
         # inner_activation='hard_sigmoid',
         # return_sequences=True
     ))
+    model.add(Activation('sigmoid'))
+    # model.add(TimeDistributedDense(64, 32))
+    model.add(Dropout(0.5))
+    # model.add(GRU(
+    #     32, 16,
+    #     # activation='sigmoid',
+    #     # inner_activation='hard_sigmoid',
+    #     # return_sequences=True
+    # ))
     # model.add(Flatten())
     # model.add(Dropout(0.5))
-    model.add(Dense(32, 1))
-    model.add(Activation('sigmoid'))
+    model.add(Dense(64, 1))
+    model.add(Activation('softmax'))
 
     model.compile(
         loss='binary_crossentropy',

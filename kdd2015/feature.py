@@ -6,17 +6,17 @@ from collections import Counter
 from multiprocessing import Pool
 
 # from dateutil import parser
-# from pandas import date_range
+from pandas import date_range, Series
 from numpy import array, vstack, random, zeros
 from keras.preprocessing import sequence
 from more_itertools import chunked, flatten, first
 
-from .analyze import time_bound
+from .analyze import time_bound, fetch_user
 
 # from ptpdb import set_trace
 
 
-TIMESTEP_WINDOW_SIZE = 32
+TIMESTEP_WINDOW_SIZE = 34
 
 
 def indexing(df):
@@ -87,28 +87,31 @@ def _time_events(series):
 
 
 def _build_array(args):
-    logs_df, enrollments_df = args[0], args[1]
+    logs_df, enrollments_df = args[0], args[1],
     enrollment_id, event_ids = args[2], args[3]
+
+    print(enrollment_id)
 
     if not hasattr(_build_array, '_time_bound_cache'):
         _build_array._time_bound_cache = {}
 
     course_id = enrollments_df.loc[enrollment_id]['course_id']
+    username = enrollments_df.loc[enrollment_id]['username']
 
     if course_id not in _build_array._time_bound_cache:
         _build_array._time_bound_cache[course_id] = time_bound(
             logs_df, enrollments_df, course_id)
 
-    logs_df = logs_df.loc[event_ids]
-    logs_df = logs_df[['time', 'event']]
-    logs_df = logs_df.set_index('time')
-    logs_df = logs_df.resample('D', how=_time_events)
+    enrollment_logs_df = logs_df.loc[event_ids]
+    enrollment_logs_df = enrollment_logs_df[['time', 'event']]
+    enrollment_logs_df = enrollment_logs_df.set_index('time')
+    enrollment_logs_df = enrollment_logs_df.resample('D', how=_time_events)
 
     course_start_time, course_end_time = \
         _build_array._time_bound_cache[course_id]
 
-    enrollment_start_time = logs_df.index[0]
-    enrollment_end_time = logs_df.index[-1]
+    enrollment_start_time = enrollment_logs_df.index[0]
+    enrollment_end_time = enrollment_logs_df.index[-1]
 
     result = []
 
@@ -116,12 +119,77 @@ def _build_array(args):
     for diff in range(late_days):
         result.append([0] * TIMESTEP_WINDOW_SIZE)
 
-    for events in logs_df['event'].values:
+    for events in enrollment_logs_df['event'].values:
         result.append(events)
 
     leave_early_days = (course_end_time - enrollment_end_time).days
     for diff in range(leave_early_days):
         result.append([0] * TIMESTEP_WINDOW_SIZE)
+
+    # if not hasattr(_build_array, '_fetch_user_cache'):
+    #     _build_array._fetch_user_cache = {}
+
+    # if username not in _build_array._fetch_user_cache:
+    #     _build_array._fetch_user_cache[username] = fetch_user(
+    #         logs_df, enrollments_df, username)
+
+        user_logs_df = logs_df[logs_df['username'] == username]
+
+        if not isinstance(user_logs_df, Series):
+            user_logs_df = user_logs_df[user_logs_df.index != enrollment_id]
+            user_logs_df['enrollment_id'] = user_logs_df.index
+            # TODO user_logs_df.index.unique()
+            user_logs_df = user_logs_df.set_index('time')
+            # user_logs_df.index = user_logs_df.index.normalize()
+
+            # events_count = len(user_logs_df)
+
+            # set_trace()
+            enum_dates = enumerate(
+                date_range(course_start_time, course_end_time))
+            enum_dates = filter(
+                lambda i_date: (i_date[0] >= late_days) and
+                (i_date[0] < (30 - leave_early_days)),
+                enum_dates
+            )
+
+            dates_counter = Counter(
+                user_logs_df.index.map(lambda x: str(x.date())))
+
+            normalized_indices = user_logs_df.index.normalize()
+
+            # set_trace()
+
+            for i, date in enum_dates:
+                date = str(date.date())
+
+                # print(i)
+
+                present_in_others = 0
+
+                # try:
+                if date in normalized_indices:
+                    present_in_others = len(
+                        user_logs_df[date]['enrollment_id'].unique())
+                # except:
+                    # set_trace()
+
+                # if events_count == 0:
+                    # break
+
+                # assert events_count > 0
+
+                # logs present in other enrollments same date.
+                # set_trace()
+                # print(date)
+                # try:
+                result[i][32] = dates_counter[date]
+                    # events_count -= result[i][32]
+                # except:
+                    # set_trace()
+                # print(result[i][32])
+
+                result[i][33] = present_in_others
 
     assert len(result) == 30
     return (enrollment_id, array(result))
@@ -134,28 +202,29 @@ def exclude(logs_df):
     return logs_df
 
 
-def df2array(df, df_ans, enrollments_df):
+def df2array(logs_df, truth_df, enrollments_df):
     # maxlen = TIMESTEP_WINDOW_SIZE * 30
     # df = exclude(df)
-    df = indexing(df)
-    df_ans = df_ans.set_index('enrollment_id')
-    enrollments = df.groupby('enrollment_id').groups
+    logs_df = indexing(logs_df)
+    # user_logs_df = logs_df.set_index('username')
+    truth_df = truth_df.set_index('enrollment_id')
+    enrollments = logs_df.groupby('enrollment_id').groups
     x_train = []
     y_train = []
     x_test = []
 
     enrollments_df = enrollments_df.set_index('enrollment_id', False)
 
-    # pool = Pool(2)
-    built_arrays = dict(map(_build_array, map(
-        lambda x: (df, enrollments_df, x[0], x[1]), enrollments.items())))
-    # pool.close()
-    # pool.join()
+    pool = Pool()
+    built_arrays = dict(pool.map(_build_array, map(
+        lambda x: (logs_df, enrollments_df, x[0], x[1]), enrollments.items())))
+    pool.close()
+    pool.join()
 
     for enrollment_id, built_array in built_arrays.items():
-        if enrollment_id in df_ans.index:
+        if enrollment_id in truth_df.index:
             x_train.append(built_array)
-            y_train.append(df_ans.ix[enrollment_id]['dropout'])
+            y_train.append(truth_df.ix[enrollment_id]['dropout'])
         else:
             x_test.append(built_array)
 

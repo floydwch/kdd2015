@@ -1,11 +1,20 @@
 # -*- coding: utf-8 -*-
 # from ptpdb import set_trace
 # from dateutil import parser
+# import pandas as pd
 
 
-def fetch(logs_df, enrollment_id):
-    enrollments = logs_df.groupby('enrollment_id').groups
-    return logs_df.iloc[enrollments[enrollment_id]]
+def fetch_enrollment(logs_df, enrollment_id):
+    return logs_df[logs_df['enrollment_id'] == enrollment_id]
+
+
+def fetch_user(logs_df, username):
+    # enrollments_df = enrollments_df.set_index('username')
+    # enrollments = enrollments_df.loc[username]['enrollment_id']
+    # logs_df = logs_df.set_index('enrollment_id')
+    # logs_df = logs_df.loc[enrollments]
+    return logs_df[logs_df['username'] == username]
+    # set_trace()
 
 
 def time_bound(logs_df, enrollments_df, course_id):
@@ -43,8 +52,3 @@ def all_time_bound():
         print(course_id, start_time, end_time, (end_time - start_time).days)
 
     print('len:', len(skip))
-
-
-def display_daily_distr():
-    logs_df, truth, enrollments_df = load_csv()
-    logs_df['time']

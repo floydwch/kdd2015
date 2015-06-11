@@ -23,11 +23,13 @@ def load_csv():
     log_test['train'] = False
 
     df_ans.columns = ['enrollment_id', 'dropout']
-    df_ans = df_ans.set_index('enrollment_id')
+    # df_ans = df_ans.set_index('enrollment_id')
 
     df = pd.concat([log_train, log_test], ignore_index=True)
+    df = pd.merge(df, df_ans, how='left', on='enrollment_id')
     enrollments = pd.concat(
         [enrollment_train, enrollment_test], ignore_index=True)
+    df = pd.merge(df, enrollments, how='left', on='enrollment_id')
     # df = pd.merge(df, enrollments, on='enrollment_id')
 
     return df, df_ans, enrollments
