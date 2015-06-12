@@ -11,7 +11,7 @@ import numpy as np
 import h5py
 from ipdb import set_trace
 
-from .feature import df2array
+from .feature import df2array, append_features
 
 
 # @lru_cache(maxsize=None)
@@ -27,28 +27,28 @@ def load_csv():
 
     truth_df.columns = ['enrollment_id', 'dropout']
 
-    logs_df = pd.concat([log_train, log_test], ignore_index=True)
-    logs_df = pd.merge(logs_df, truth_df, how='left', on='enrollment_id')
-    enrollments_df = pd.concat(
+    log_df = pd.concat([log_train, log_test], ignore_index=True)
+    log_df = pd.merge(log_df, truth_df, how='left', on='enrollment_id')
+    enrollment_df = pd.concat(
         [enrollment_train, enrollment_test], ignore_index=True)
-    logs_df = pd.merge(logs_df, enrollments_df, how='left', on='enrollment_id')
+    log_df = pd.merge(log_df, enrollment_df, how='left', on='enrollment_id')
 
-    del enrollments_df
+    del enrollment_df
 
-    logs_df['date'] = logs_df['time'].map(pd.datetools.normalize_date)
+    log_df['date'] = log_df['time'].map(pd.datetools.normalize_date)
 
-    logs_df['source'] = logs_df['source'].astype('category')
-    logs_df['event'] = logs_df['event'].astype('category')
-    logs_df['object'] = logs_df['object'].astype('category')
-    logs_df['username'] = logs_df['username'].astype('category')
-    logs_df['course_id'] = logs_df['course_id'].astype('category')
+    log_df['source'] = log_df['source'].astype('category')
+    log_df['event'] = log_df['event'].astype('category')
+    log_df['object'] = log_df['object'].astype('category')
+    log_df['username'] = log_df['username'].astype('category')
+    log_df['course_id'] = log_df['course_id'].astype('category')
 
     selected_indices = ['enrollment_id', 'username', 'course_id', 'date']
-    logs_df = logs_df.set_index(selected_indices)
+    log_df = log_df.set_index(selected_indices)
 
-    logs_df.sortlevel(inplace=True)
+    log_df.sortlevel(inplace=True)
 
-    course_groups = logs_df.groupby(level='course_id')
+    course_groups = log_df.groupby(level='course_id')
 
     start_dates = course_groups['time'].agg(np.min).map(
         pd.datetools.normalize_date)
@@ -60,33 +60,34 @@ def load_csv():
     end_dates.name = 'end_dates'
     end_dates = DataFrame(end_dates)
 
-    logs_df['start_date'] = start_dates.reindex(
-        logs_df.index, level='course_id')
+    log_df['start_date'] = start_dates.reindex(
+        log_df.index, level='course_id')
 
-    logs_df['end_date'] = end_dates.reindex(
-        logs_df.index, level='course_id')
+    log_df['end_date'] = end_dates.reindex(
+        log_df.index, level='course_id')
 
-    enrollment_ids = logs_df.index.get_level_values('enrollment_id').unique()
+    enrollment_ids = log_df.index.get_level_values('enrollment_id').unique()
     days = np.array(range(30))
 
     index = MultiIndex.from_product(
         [enrollment_ids, days],
         names=['enrollment_id', 'day'])
 
-    enrollments_df = DataFrame(index=index)
+    enrollment_df = DataFrame(index=index)
+    enrollment_df = append_features(enrollment_df, log_df)
 
-    logs_df.to_pickle('logs_df.pickle')
+    log_df.to_pickle('log_df.pickle')
     truth_df.to_pickle('truth_df.pickle')
-    enrollments_df.to_pickle('enrollments_df.pickle')
+    enrollment_df.to_pickle('enrollment_df.pickle')
 
-    return logs_df, truth_df, enrollments_df
+    return log_df, truth_df, enrollment_df
 
 
 def load_pickle():
-    logs_df = pd.read_pickle('logs_df.pickle')
+    log_df = pd.read_pickle('log_df.pickle')
     truth_df = pd.read_pickle('truth_df.pickle')
-    enrollments_df = pd.read_pickle('enrollments_df.pickle')
-    return logs_df, truth_df, enrollments_df
+    enrollment_df = pd.read_pickle('enrollment_df.pickle')
+    return log_df, truth_df, enrollment_df
 
 
 def to_submission(result):
@@ -100,15 +101,15 @@ def to_submission(result):
 
 
 def load_data():
-    if not (os.path.isfile('logs_df.pickle') or
+    if not (os.path.isfile('log_df.pickle') or
             os.path.isfile('truth_df.pickle') or
-            os.path.isfile('enrollments_df.pickle')):
-        logs_df, truth_df, enrollments_df = load_csv()
+            os.path.isfile('enrollment_df.pickle')):
+        log_df, truth_df, enrollment_df = load_csv()
     else:
-        logs_df, truth_df, enrollments_df = load_pickle()
+        log_df, truth_df, enrollment_df = load_pickle()
 
     if not os.path.isfile('data.h5'):
-        x_train, y_train, x_test = df2array(logs_df)
+        x_train, y_train, x_test = df2array(log_df)
 
         with h5py.File('data.h5', 'w') as h5f:
             h5f.create_dataset('x_train', data=x_train)
@@ -120,4 +121,4 @@ def load_data():
             y_train = h5f['y_train'][:]
             x_test = h5f['x_test'][:]
 
-    return logs_df, truth_df, x_train, y_train, x_test
+    return log_df, truth_df, x_train, y_train, x_test
