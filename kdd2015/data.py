@@ -4,7 +4,9 @@
 from datetime import datetime
 import os.path
 
+from pandas import MultiIndex, DataFrame
 import pandas as pd
+import numpy as np
 # from numpy import datetime64
 import h5py
 from ipdb import set_trace
@@ -31,6 +33,8 @@ def load_csv():
         [enrollment_train, enrollment_test], ignore_index=True)
     logs_df = pd.merge(logs_df, enrollments_df, how='left', on='enrollment_id')
 
+    del enrollments_df
+
     logs_df['date'] = logs_df['time'].map(pd.datetools.normalize_date)
 
     logs_df['source'] = logs_df['source'].astype('category')
@@ -43,6 +47,33 @@ def load_csv():
     logs_df = logs_df.set_index(selected_indices)
 
     logs_df.sortlevel(inplace=True)
+
+    course_groups = logs_df.groupby(level='course_id')
+
+    start_dates = course_groups['time'].agg(np.min).map(
+        pd.datetools.normalize_date)
+    start_dates.name = 'start_dates'
+    start_dates = DataFrame(start_dates)
+
+    end_dates = course_groups['time'].agg(np.max).map(
+        pd.datetools.normalize_date)
+    end_dates.name = 'end_dates'
+    end_dates = DataFrame(end_dates)
+
+    logs_df['start_date'] = start_dates.reindex(
+        logs_df.index, level='course_id')
+
+    logs_df['end_date'] = end_dates.reindex(
+        logs_df.index, level='course_id')
+
+    enrollment_ids = logs_df.index.get_level_values('enrollment_id').unique()
+    days = np.array(range(30))
+
+    index = MultiIndex.from_product(
+        [enrollment_ids, days],
+        names=['enrollment_id', 'day'])
+
+    enrollments_df = DataFrame(index=index)
 
     logs_df.to_pickle('logs_df.pickle')
     truth_df.to_pickle('truth_df.pickle')
@@ -72,7 +103,6 @@ def load_data():
     if not (os.path.isfile('logs_df.pickle') or
             os.path.isfile('truth_df.pickle') or
             os.path.isfile('enrollments_df.pickle')):
-
         logs_df, truth_df, enrollments_df = load_csv()
     else:
         logs_df, truth_df, enrollments_df = load_pickle()
