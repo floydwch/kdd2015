@@ -112,8 +112,6 @@ def load_csv():
 
     enrollment_df['date'] = enrollment_df.index.map(cal_date)
 
-    enrollment_df = append_features(enrollment_df, log_df, course_df)
-
     enrollment_df.to_pickle('enrollment_df.pickle')
     truth_df.to_pickle('truth_df.pickle')
     log_df.to_pickle('log_df.pickle')
@@ -140,11 +138,35 @@ def to_submission(result):
     )
 
 
+def load_feature():
+    if not os.path.isfile('feature_df.pickle'):
+        if not (os.path.isfile('enrollment_df.pickle') or
+                os.path.isfile('truth_df.pickle') or
+                os.path.isfile('log_df.pickle') or
+                os.path.isfile('course_df.pickle')):
+
+            enrollment_df, truth_df, log_df, course_df = load_csv()
+
+        else:
+            enrollment_df, truth_df, log_df, course_df = load_pickle()
+
+        feature_df = append_features(enrollment_df, log_df)
+        feature_df.to_pickle('feature_df.pickle')
+
+    else:
+        feature_df = pd.read_pickle('feature_df.pickle')
+
+    return feature_df
+
+
 def load_data():
-    if not (os.path.isfile('log_df.pickle') or
+    if not (os.path.isfile('enrollment_df.pickle') or
             os.path.isfile('truth_df.pickle') or
-            os.path.isfile('enrollment_df.pickle')):
+            os.path.isfile('log_df.pickle') or
+            os.path.isfile('course_df.pickle')):
+
         enrollment_df, truth_df, log_df, course_df = load_csv()
+
     else:
         enrollment_df, truth_df, log_df, course_df = load_pickle()
 

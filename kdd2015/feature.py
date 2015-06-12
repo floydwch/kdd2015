@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
-from itertools import groupby
+from itertools import groupby, repeat
 from collections import Counter
 from multiprocessing import Pool
 
 # from dateutil import parser
-from pandas import date_range, Series
-from numpy import array, vstack, random, zeros
+import pandas as pd
+from pandas import date_range, DataFrame, Series, IndexSlice, MultiIndex
+from numpy import array, vstack, random, zeros, array_split
 from keras.preprocessing import sequence
 from more_itertools import chunked, flatten, first
 
 from .analyze import time_bound, fetch_user
 
-# from ptpdb import set_trace
+from ipdb import set_trace
 
 
 TIMESTEP_WINDOW_SIZE = 34
@@ -203,10 +204,7 @@ def exclude(logs_df):
 
 
 def df2array(logs_df, truth_df, enrollments_df):
-    # maxlen = TIMESTEP_WINDOW_SIZE * 30
-    # df = exclude(df)
     logs_df = indexing(logs_df)
-    # user_logs_df = logs_df.set_index('username')
     truth_df = truth_df.set_index('enrollment_id')
     enrollments = logs_df.groupby('enrollment_id').groups
     x_train = []
@@ -228,8 +226,81 @@ def df2array(logs_df, truth_df, enrollments_df):
         else:
             x_test.append(built_array)
 
-    # x_train = sequence.pad_sequences(x_train, maxlen=maxlen)
-    # x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
-
     return array(x_train), array(y_train), array(x_test)
-    # return x_train, array(y_train), x_test
+
+
+def _extract_date_event_freq(index, log_df):
+        print(index[0])
+        # set_trace()
+        freqs = log_df.xs(index, level=['enrollment_id', 'date'])['event'].value_counts(sort=False).values
+        categories = log_df['event'].cat.categories.values
+        return Series(freqs, categories)
+
+
+def _extract_enrollment_event_freq(args):
+    index, log_df = args[0], args[1]
+    # print(index)
+    # set_trace()
+    # freqs = log_df.loc(index)['event'].value_counts(sort=False).values
+    categories = log_df['event'].cat.categories.values
+    multi_index = MultiIndex.from_arrays([[index[0]] * 30, [i for i in range(30)]], names=['enrollment_id', 'day'])
+    event_freq_df = DataFrame(index=multi_index, columns=categories)
+    event_freq_df['date'] = index[1]
+    event_freq_df.reset_index(inplace=True)
+    event_freq_df = event_freq_df[['enrollment_id', 'date']].apply(_extract_date_event_freq, axis=1, args=(log_df,))
+    # set_trace()
+    # freqs = log_df.xs(
+    #     [index[0], dates],
+    #     level=['enrollment_id', 'date']).value_counts(sort=False).values
+    # freqs = [freqs_dict[freq_key] for freq_key in categories]
+
+    # event_freq_df.loc[0] = freqs
+    # set_trace()
+    return event_freq_df
+
+
+def append_features(enrollment_df, log_df):
+    # def extract_event_freq(index):
+    #     print(index)
+    #     freqs = log_df.xs(
+    #         index,
+    #         level=['enrollment_id', 'date'])['event'].value_counts(
+    #             sort=False).values
+    #     categories = log_df['event'].cat.categories.values
+    #     return Series(freqs, categories)
+    njob = 4
+
+    log_df = log_df.reset_index()
+    log_df.set_index(['enrollment_id', 'date'], inplace=True)
+    # log_df = log_df['event']
+
+    # enrollment_df.reset_index(inplace=True)
+    enrollment_df = enrollment_df[['date']]
+    enrollment_df.index = enrollment_df.index.droplevel(1)
+    # set_trace()
+    # indices = [(i, enrollment_df.xs(i, level='enrollment_id')['date']
+    #             ) for i in enrollment_df.index.get_level_values(
+    #                 'enrollment_id').unique()]
+    records = [(i, enrollment_df.loc[i]['date'].values) for i in enrollment_df.index.unique()]
+    # set_trace()
+    pool = Pool(njob)
+    partial_event_freq_df = pool.map(
+        _extract_enrollment_event_freq,
+        zip(records, repeat(log_df)))
+    event_freq_df = pd.concat(partial_event_freq_df)
+    # set_trace()
+    event_freq_df.reset_index(drop=True, inplace=True)
+    enrollment_df.reset_index(inplace=True)
+    enrollment_df = pd.concat([enrollment_df, event_freq_df], axis=1)
+    set_trace()
+
+    # enrollment_df = enrollment_df.join(
+    #     enrollment_df[['enrollment_id', 'date']].apply(
+    #         extract_event_freq, axis=1))
+
+    pool.close()
+    pool.join()
+
+    # set_trace()
+
+    return enrollment_df
