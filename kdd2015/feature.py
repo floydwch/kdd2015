@@ -231,21 +231,54 @@ def df2array(logs_df, truth_df, enrollments_df):
 
 def _hour_zone(time):
     hour = time.hour
+    z0 = 'z0'
+    z1 = 'z1'
+    z2 = 'z2'
+    z3 = 'z3'
+    z4 = 'z4'
+    z5 = 'z5'
 
-    if hour in [22, 23, 0, 1, 2, 3]:
-        zone = 'z0'
-    elif hour in range(4, 9):
-        zone = 'z1'
-    elif hour in range(9, 12):
-        zone = 'z2'
-    elif hour in range(12, 15):
-        zone = 'z3'
-    elif hour in range(15, 18):
-        zone = 'z4'
-    elif hour in range(18, 22):
-        zone = 'z5'
+    zone = {
+        22: z0,
+        23: z0,
+        0: z0,
+        1: z0,
+        2: z0,
+        3: z0,
+        4: z1,
+        5: z1,
+        6: z1,
+        7: z1,
+        8: z1,
+        9: z2,
+        10: z2,
+        11: z2,
+        12: z3,
+        13: z3,
+        14: z3,
+        15: z4,
+        16: z4,
+        17: z4,
+        18: z5,
+        19: z5,
+        20: z5,
+        21: z5
+    }
 
-    return zone
+    # if hour in [22, 23, 0, 1, 2, 3]:
+    #     zone = 'z0'
+    # elif hour in range(4, 9):
+    #     zone = 'z1'
+    # elif hour in range(9, 12):
+    #     zone = 'z2'
+    # elif hour in range(12, 15):
+    #     zone = 'z3'
+    # elif hour in range(15, 18):
+    #     zone = 'z4'
+    # elif hour in range(18, 22):
+    #     zone = 'z5'
+
+    return zone[hour]
 
 
 def _get_hour(time):
@@ -255,7 +288,6 @@ def _get_hour(time):
 def _extract_date_event_freq(index, log_df):
         print(index[0])
         enrollment_id, date, username = index[0], index[1], index[2]
-        # set_trace()
 
         enrollment_logs = log_df.xs((enrollment_id, date), level=['enrollment_id', 'date'])
         user_logs = log_df.xs((username, date), level=['username', 'date'])
@@ -278,12 +310,10 @@ def _extract_date_event_freq(index, log_df):
             features[category] = normal_freqs[i]
 
         hour_zones = enrollment_logs['time'].map(_hour_zone).value_counts(sort=False, normalize=True).to_dict()
-        # set_trace()
         for zone in ['z0', 'z1', 'z2', 'z3', 'z4', 'z5']:
             features[zone] = hour_zones.get(zone, 0)
 
         hour_distri = enrollment_logs['time'].map(_get_hour).value_counts(sort=False).to_dict().keys()
-
         features['hour_count'] = len(hour_distri)
 
         hour_distri = sorted(hour_distri)
@@ -304,10 +334,8 @@ def _extract_date_event_freq(index, log_df):
 
         features['longest_cont_hours'] = longest_cont_hours
 
-        # set_trace()
-
         user_logs.reset_index(inplace=True)
-        # set_trace()
+
         date_log_count = user_logs['enrollment_id'].count()
         enrollment_log_count = user_logs[user_logs['enrollment_id'] == enrollment_id]['enrollment_id'].count()
 
@@ -328,8 +356,6 @@ def _extract_date_event_freq(index, log_df):
         total_course = len(user_logs['course_id'].unique())
         features['total_course'] = total_course
 
-        # user_logs.xs(username, level='username')[]
-
         # if total_course > 0:
         #     dropout_stat = user_logs[['enrollment_id', 'dropout']].drop_duplicates()['dropout'].value_counts().to_dict()
         #     dropout_count = dropout_stat.get(1, 0)
@@ -340,8 +366,6 @@ def _extract_date_event_freq(index, log_df):
         #     dropout_prob = 0.5
 
         # features['dropout_prob'] = dropout_prob
-
-        # set_trace()
         return features
 
 
