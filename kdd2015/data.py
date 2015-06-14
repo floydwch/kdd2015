@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 # from numpy import datetime64
 import h5py
-from ipdb import set_trace
+# from ipdb import set_trace
 
 from .feature import df2array, append_features
 
@@ -112,19 +112,28 @@ def load_csv():
 
     enrollment_df['date'] = enrollment_df.index.map(cal_date)
 
-    enrollment_df.to_pickle('enrollment_df.pickle')
-    truth_df.to_pickle('truth_df.pickle')
-    log_df.to_pickle('log_df.pickle')
-    course_df.to_pickle('course_df.pickle')
-
     return enrollment_df, truth_df, log_df, course_df
 
 
-def load_pickle():
-    enrollment_df = pd.read_pickle('enrollment_df.pickle')
-    truth_df = pd.read_pickle('truth_df.pickle')
-    log_df = pd.read_pickle('log_df.pickle')
-    course_df = pd.read_pickle('course_df.pickle')
+def load_raw():
+    if not (os.path.isfile('enrollment_df.pickle') or
+            os.path.isfile('truth_df.pickle') or
+            os.path.isfile('log_df.pickle') or
+            os.path.isfile('course_df.pickle')):
+
+        enrollment_df, truth_df, log_df, course_df = load_csv()
+
+        enrollment_df.to_pickle('enrollment_df.pickle')
+        truth_df.to_pickle('truth_df.pickle')
+        log_df.to_pickle('log_df.pickle')
+        course_df.to_pickle('course_df.pickle')
+
+    else:
+        enrollment_df = pd.read_pickle('enrollment_df.pickle')
+        truth_df = pd.read_pickle('truth_df.pickle')
+        log_df = pd.read_pickle('log_df.pickle')
+        course_df = pd.read_pickle('course_df.pickle')
+
     return enrollment_df, truth_df, log_df, course_df
 
 
@@ -148,7 +157,7 @@ def load_feature():
             enrollment_df, truth_df, log_df, course_df = load_csv()
 
         else:
-            enrollment_df, truth_df, log_df, course_df = load_pickle()
+            enrollment_df, truth_df, log_df, course_df = load_raw()
 
         feature_df = append_features(enrollment_df, log_df)
         feature_df.to_pickle('feature_df.pickle')
@@ -160,18 +169,30 @@ def load_feature():
 
 
 def load_data():
-    if not (os.path.isfile('enrollment_df.pickle') or
-            os.path.isfile('truth_df.pickle') or
-            os.path.isfile('log_df.pickle') or
-            os.path.isfile('course_df.pickle')):
-
-        enrollment_df, truth_df, log_df, course_df = load_csv()
-
-    else:
-        enrollment_df, truth_df, log_df, course_df = load_pickle()
-
     if not os.path.isfile('data.h5'):
-        x_train, y_train, x_test = df2array(log_df)
+        enrollment_df, truth_df, log_df, course_df = load_raw()
+        feature_df = load_feature()
+
+        feature_df.set_index('enrollment_id', inplace=True)
+        truth_df.set_index('enrollment_id', inplace=True)
+        feature_truth_df = feature_df.join(truth_df)
+
+        train_df = feature_truth_df.dropna()
+        test_df = feature_truth_df[feature_truth_df['dropout'].isnull()]
+
+        for column in ['username', 'date', 'dropout']:
+            del train_df[column]
+            del test_df[column]
+
+
+        x_train = np.array(np.split(train_df.values, len(train_df.index.unique())))
+        x_test = np.array(np.split(test_df.values, len(test_df.index.unique())))
+
+        y_train = truth_df.values.flatten()
+
+        # set_trace()
+
+        # x_train, y_train, x_test = df2array(log_df)
 
         with h5py.File('data.h5', 'w') as h5f:
             h5f.create_dataset('x_train', data=x_train)
@@ -183,4 +204,4 @@ def load_data():
             y_train = h5f['y_train'][:]
             x_test = h5f['x_test'][:]
 
-    return log_df, truth_df, x_train, y_train, x_test
+    return x_train, y_train, x_test
