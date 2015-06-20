@@ -375,8 +375,8 @@ def _extract_date_event_freq(index, log_df):
                 else:
                     freqs = zeros(7)
                     freqs[FEATURE_NAMES.index(enrollment_logs['event'])] = 1
-                    hour_distri = [_hour_zone(enrollment_logs['time'])]
-                    hour_zones = {hour_distri[0]: 1}
+                    hour_zones = {_hour_zone(enrollment_logs['time'])[0]: 1}
+                    hour_distri = [_get_hour(enrollment_logs['time'])]
 
                 for i, freq in enumerate(freqs):
                     features.iloc[i] = freq
@@ -424,9 +424,10 @@ def _extract_date_event_freq(index, log_df):
                 total_course = user_logs['course_id'].unique().shape[0]
                 features['total_course'] = total_course
 
+                # set_trace()
                 total_hour_zones = user_logs['time'].map(_hour_zone).value_counts(sort=False, normalize=True).to_dict()
-                for zone in ZONE_TOTAL_FEATURE_NAMES:
-                    features[zone] = total_hour_zones.get(zone, 0)
+                for zone in ZONE_FEATURE_NAMES:
+                    features[zone + '_total'] = total_hour_zones.get(zone, 0)
 
         # if total_course > 0:
         #     dropout_stat = user_logs[['enrollment_id', 'dropout']].drop_duplicates()['dropout'].value_counts().to_dict()
@@ -468,6 +469,7 @@ def _extract_enrollment_event_freq(args):
     # try:
     first_day = event_freq_df[event_freq_df['hour_count'] != 0].index[0]
     last_day = event_freq_df[event_freq_df['hour_count'] != 0].index[-1]
+    # set_trace()
     # except:
     #     set_trace()
     # set_trace()
