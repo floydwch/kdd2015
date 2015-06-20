@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # from datetime import datetime
 # from functools import lru_cache
+# from operator import __add__
 from datetime import datetime
 import os.path
 
@@ -112,29 +113,50 @@ def load_csv():
 
     enrollment_df['date'] = enrollment_df.index.map(cal_date)
 
-    return enrollment_df, truth_df, log_df, course_df
+    log_df['course_id'] = log_df.index.get_level_values('course_id')
+    object_df = log_df.sortlevel('date')
+    object_df = object_df[['course_id', 'event', 'object']]
+    object_df.drop_duplicates(inplace=True)
+
+    del log_df['course_id']
+
+    raw_object_df = pd.read_csv('object.csv')
+
+    raw_object_df.rename(
+        columns={'module_id': 'object', 'course_id': 'raw_object_course_id'},
+        inplace=True
+    )
+
+    # raw_object_df.set_index('module_id', inplace=True)
+
+    object_df = object_df.merge(raw_object_df, how='left', on='object')
+
+    return enrollment_df, truth_df, log_df, course_df, object_df
 
 
 def load_raw():
-    if not (os.path.isfile('enrollment_df.pickle') or
-            os.path.isfile('truth_df.pickle') or
-            os.path.isfile('log_df.pickle') or
-            os.path.isfile('course_df.pickle')):
+    if not (os.path.isfile('enrollment_df.pickle') and
+            os.path.isfile('truth_df.pickle') and
+            os.path.isfile('log_df.pickle') and
+            os.path.isfile('course_df.pickle') and
+            os.path.isfile('object_df.pickle')):
 
-        enrollment_df, truth_df, log_df, course_df = load_csv()
+        enrollment_df, truth_df, log_df, course_df, object_df = load_csv()
 
         enrollment_df.to_pickle('enrollment_df.pickle')
         truth_df.to_pickle('truth_df.pickle')
         log_df.to_pickle('log_df.pickle')
         course_df.to_pickle('course_df.pickle')
+        object_df.to_pickle('object_df.pickle')
 
     else:
         enrollment_df = pd.read_pickle('enrollment_df.pickle')
         truth_df = pd.read_pickle('truth_df.pickle')
         log_df = pd.read_pickle('log_df.pickle')
         course_df = pd.read_pickle('course_df.pickle')
+        object_df = pd.read_pickle('object_df.pickle')
 
-    return enrollment_df, truth_df, log_df, course_df
+    return enrollment_df, truth_df, log_df, course_df, object_df
 
 
 def to_submission(result):
@@ -149,15 +171,15 @@ def to_submission(result):
 
 def load_feature():
     if not os.path.isfile('feature_df.pickle'):
-        if not (os.path.isfile('enrollment_df.pickle') or
-                os.path.isfile('truth_df.pickle') or
-                os.path.isfile('log_df.pickle') or
-                os.path.isfile('course_df.pickle')):
+        # if not (os.path.isfile('enrollment_df.pickle') or
+        #         os.path.isfile('truth_df.pickle') or
+        #         os.path.isfile('log_df.pickle') or
+        #         os.path.isfile('course_df.pickle')):
 
-            enrollment_df, truth_df, log_df, course_df = load_csv()
+            # enrollment_df, truth_df, log_df, course_df, object_df = load_csv()
 
-        else:
-            enrollment_df, truth_df, log_df, course_df = load_raw()
+        # else:
+        enrollment_df, truth_df, log_df, course_df, object_df = load_raw()
 
         feature_df = append_features(enrollment_df, log_df)
         feature_df.to_pickle('feature_df.pickle')
@@ -180,13 +202,71 @@ def load_data():
         train_df = feature_truth_df.dropna()
         test_df = feature_truth_df[feature_truth_df['dropout'].isnull()]
 
-        for column in ['username', 'date', 'dropout']:
+        masked_features = [
+            # 'access',
+            # 'discussion',
+            # 'nagivate',
+            # 'page_close',
+            # 'problem',
+            # 'video',
+            # 'wiki',
+            # 'normal_access',
+            # 'normal_discussion',
+            # 'normal_nagivate',
+            # 'normal_page_close',
+            # 'normal_problem',
+            # 'normal_video',
+            # 'normal_wiki',
+            # 'z0',
+            # 'z1',
+            # 'z2',
+            # 'z3',
+            # 'z4',
+            # 'z5',
+            # 'hour_count',
+            # 'longest_cont_hours',
+            # 'act_ratio',
+            # 'login_hours',
+            # 'z0_total',
+            # 'z1_total',
+            # 'z2_total',
+            # 'z3_total',
+            # 'z4_total',
+            # 'z5_total',
+            # 'total_course',
+            'first_day',  # couse the training failed
+            'last_day'
+        ]
+
+        for column in ['username', 'date', 'dropout'] + masked_features:
             del train_df[column]
             del test_df[column]
 
 
         x_train = np.array(np.split(train_df.values, len(train_df.index.unique())))
+        # x_train = np.array([reduce(__add__, x_train[:, i:i + 5]) for i in range(0, x_train.shape[0], 5)])
+
+        # squeeze_timestep = 15
+
+        # x_train = (x_train[:, 0::3] + x_train[:, 1::3] + x_train[:, 2::3]) / 3 #+ x_train[:, 3::5] + x_train[:, 4::5]
+        # x_train = x_train[:, 20:]
+
+        # squeezed_x_train = x_train[:, :squeeze_timestep]
+        # for i in range(squeeze_timestep, 30, squeeze_timestep):
+        #     squeezed_x_train += x_train[:, i:i+squeeze_timestep]
+
         x_test = np.array(np.split(test_df.values, len(test_df.index.unique())))
+
+        # x_test = (x_test[:, 0::3] + x_test[:, 1::3] + x_test[:, 2::3]) / 3 #+ x_test[:, 3::5] + x_test[:, 4::5]
+
+        # x_test = x_test[:, 20:]
+        # squeezed_x_test = x_test[:, :squeeze_timestep]
+        # for i in range(squeeze_timestep, 30, squeeze_timestep):
+        #     squeezed_x_test += x_test[:, i:i+squeeze_timestep]
+        # x_test = np.array([reduce(__add__, x_test[:, i:i + 5]) for i in range(0, x_test.shape[0], 5)])
+
+        # x_train = squeezed_x_train
+        # x_test = squeezed_x_test
 
         y_train = truth_df.values.flatten()
 
