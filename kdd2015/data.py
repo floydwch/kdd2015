@@ -2,21 +2,25 @@
 # from datetime import datetime
 # from functools import lru_cache
 # from operator import __add__
+from math import log
 from datetime import datetime
 import os.path
+import logging
 
-from pandas import MultiIndex, DataFrame
+from pandas import MultiIndex, DataFrame, Series
 from pandas.tseries.offsets import DateOffset
+# from more_itertools import flatten
 import pandas as pd
 import numpy as np
+# from treelib import Tree
 # from numpy import datetime64
 import h5py
 # from ipdb import set_trace
 
-from .feature import df2array, append_features
+logging.basicConfig(filename='data.log', level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
-# @lru_cache(maxsize=None)
 def load_csv():
     log_train = pd.read_csv('log_train.csv', parse_dates=[1])
     log_test = pd.read_csv('log_test.csv', parse_dates=[1])
@@ -106,35 +110,246 @@ def load_csv():
 
         if course_id not in cal_date._start_dates:
             cal_date._start_dates[course_id] = \
-                course_df.loc[course_id]['start_date']
+                course_df.loc[course_id, 'start_date']
 
         start_date = cal_date._start_dates[course_id]
         return start_date + cal_date._date_offsets[index[1]]
 
     enrollment_df['date'] = enrollment_df.index.map(cal_date)
 
+    object_df = pd.read_csv('object.csv')
+
+    return enrollment_df, truth_df, log_df, course_df, object_df
+
+
+def calibrate_object(raw_object_df, log_df):
     log_df['course_id'] = log_df.index.get_level_values('course_id')
     object_df = log_df.sortlevel('date')
-    object_df = object_df[['course_id', 'event', 'object']]
+    object_df = object_df[['course_id', 'event', 'object', 'start_date']]
     object_df.drop_duplicates(inplace=True)
 
     del log_df['course_id']
 
-    raw_object_df = pd.read_csv('object.csv')
+    raw_object_df['week'] = [-10000] * raw_object_df.shape[0]
+
+    raw_object_df['start'] = raw_object_df['start'].map(
+        lambda x: pd.tslib.NaTType() if x == 'null' else pd.datetools.parse(x))
 
     raw_object_df.rename(
         columns={'module_id': 'object', 'course_id': 'raw_object_course_id'},
         inplace=True
     )
 
-    # raw_object_df.set_index('module_id', inplace=True)
+    object_df['date'] = object_df.index.get_level_values('date')
+
+    object_df['course_id'] = object_df['course_id'].astype('category')
+
+    object_df.set_index('course_id', inplace=True)
+
+    object_df['event'] = object_df['event'].astype('category')
+
+    for course_id in object_df.index.get_level_values('course_id').unique():
+        course_object_df = raw_object_df.loc[
+            (raw_object_df['raw_object_course_id'] == course_id),
+            ['category', 'object', 'children', 'start']
+        ]
+
+        course_start = pd.datetools.normalize_date(course_object_df[course_object_df['category'] == 'course']['start'].values[0])
+
+        vertical_df = raw_object_df[raw_object_df['category'] == 'vertical']
+        vertical_df.set_index('object', inplace=True)
+
+        chapter_starts = []
+        chapter_weeks = []
+        for _, chapter in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'chapter')].iterrows():
+            if isinstance(chapter['start'], int) or isinstance(course_start, int):
+                import pdb; pdb.set_trace()
+
+            if isinstance(chapter['start'], pd.tslib.NaTType):
+                chapter_starts.append(chapter['start'])
+                chapter_weeks.append(0)
+            else:
+                chapter_starts.append(course_start if chapter['start'] < course_start else chapter['start'])
+                week = (chapter_starts[-1] - course_start).days // 7
+                chapter_weeks.append(week + 1)
+
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'chapter'), 'start'] = chapter_starts
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'chapter'), 'week'] = chapter_weeks
+
+        seq_parents = []
+        seq_starts = []
+        seq_weeks = []
+        for _, seq in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'sequential')].iterrows():
+            done = False
+            for _, chapter in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'chapter')].iterrows():
+                chapter_children = chapter['children']
+
+                if not isinstance(chapter_children, str):
+                    if np.isnan(chapter_children):
+                        continue
+                    else:
+                        logger.debug('chapter %s \'s children are illegal' % chapter['object'][0])
+
+                if seq['object'] in chapter['children']:
+                    seq_parents.append(chapter['object'])
+                    if not isinstance(seq['start'], pd.tslib.NaTType):
+                        seq['start'] = pd.datetools.normalize_date(seq['start'])
+                        seq_starts.append(
+                            chapter['start'] if seq['start'] < chapter['start']
+                            else seq['start']
+                        )
+                        week = (seq_starts[-1] - course_start).days // 7
+                        seq_weeks.append(week + 1)
+                    else:
+                        seq_starts.append(seq['start'])
+                        seq_weeks.append(0)
+                        logger.info('seq %s \'s time is nat' % seq['object'])
+                    done = True
+                    break
+            if not done:
+                seq_parents.append(None)
+                seq_starts.append(pd.tslib.NaTType())
+                seq_weeks.append(0)
+                logger.info('seq %s has no parent' % seq['object'])
+
+        try:
+            assert len(seq_parents) == raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'sequential')].shape[0]
+        except:
+            import pdb; pdb.set_trace()
+
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'sequential'), 'start'] = seq_starts
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'sequential'), 'week'] = seq_weeks
+
+        video_parents = []
+        video_starts = []
+        video_weeks = []
+
+        for _, video in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'video')].iterrows():
+            done = False
+
+            for _, seq in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'sequential')].iterrows():
+                seq_children = seq['children']
+
+                if not isinstance(seq_children, str):
+                    if np.isnan(seq_children):
+                        continue
+                    else:
+                        logger.debug('seq %s \'s children are illegal' % seq['object'][0])
+
+                vertical_ids = seq_children.split()
+                for vertical_id in vertical_ids:
+
+                    try:
+                        children = vertical_df.loc[vertical_id, 'children']
+                    except KeyError:
+                        logger.debug('vertical %s not in the object.csv' % vertical_id)
+                        continue
+
+                    if isinstance(children, str):
+                        pass
+                    elif isinstance(children, Series):
+                        children = children.iloc[0]
+                    else:
+                        assert np.isnan(children)
+                        continue
+
+                    if video['object'] in children:
+                        video_parents.append(vertical_id)
+                        video_starts.append(seq['start'])
+                        if not isinstance(video_starts[-1], pd.tslib.NaTType):
+                            week = (video_starts[-1] - course_start).days // 7
+                            video_weeks.append(week + 1)
+                        else:
+                            video_weeks.append(0)
+                        done = True
+                        break
+
+                if done:
+                    break
+
+            if not done:
+                video_parents.append(None)
+                video_starts.append(pd.tslib.NaTType())
+                video_weeks.append(0)
+                logger.info('video %s has no parent' % video['object'])
+
+        assert len(video_parents) == raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'video')].shape[0]
+
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'video'), 'start'] = video_starts
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'video'), 'week'] = video_weeks
+
+        problem_parents = []
+        problem_starts = []
+        problem_weeks = []
+
+        for _, problem in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'problem')].iterrows():
+            done = False
+
+            for _, seq in raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'sequential')].iterrows():
+
+                seq_children = seq['children']
+
+                if not isinstance(seq_children, str):
+                    if np.isnan(seq_children):
+                        continue
+                    else:
+                        logger.debug('seq %s \'s children are illegal' % seq['object'][0])
+
+                vertical_ids = seq_children.split()
+
+                for vertical_id in vertical_ids:
+
+                    try:
+                        children = vertical_df.loc[vertical_id, 'children']
+                    except KeyError:
+                        logger.debug('vertical %s not in the object.csv' % vertical_id)
+                        continue
+
+                    if isinstance(children, str):
+                        pass
+                    elif isinstance(children, Series):
+                        children = children.iloc[0]
+                    else:
+                        assert np.isnan(children)
+                        continue
+
+                    if problem['object'] in children:
+                        problem_parents.append(vertical_id)
+                        problem_starts.append(seq['start'])
+                        if not isinstance(problem_starts[-1], pd.tslib.NaTType):
+                            week = (problem_starts[-1] - course_start).days // 7
+                            problem_weeks.append(week + 1)
+                        else:
+                            problem_weeks.append(0)
+                        done = True
+                        break
+
+                if done:
+                    break
+
+            if not done:
+                problem_parents.append(None)
+                problem_starts.append(pd.tslib.NaTType())
+                problem_weeks.append(0)
+                logger.info('problem %s has no parent' % problem['object'])
+
+
+        assert len(problem_parents) == raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'problem')].shape[0]
+
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'problem'), 'start'] = problem_starts
+        raw_object_df.loc[(raw_object_df['raw_object_course_id'] == course_id) & (raw_object_df['category'] == 'problem'), 'week'] = problem_weeks
 
     object_df = object_df.merge(raw_object_df, how='left', on='object')
 
-    return enrollment_df, truth_df, log_df, course_df, object_df
+    object_df['start'] = object_df['start'].map(pd.to_datetime)
+
+    object_df['object'] = object_df['object'].astype('category')
+    object_df['category'] = object_df['category'].astype('category')
+
+    return object_df
 
 
-def load_raw():
+def load_df():
     if not (os.path.isfile('enrollment_df.pickle') and
             os.path.isfile('truth_df.pickle') and
             os.path.isfile('log_df.pickle') and
@@ -142,6 +357,8 @@ def load_raw():
             os.path.isfile('object_df.pickle')):
 
         enrollment_df, truth_df, log_df, course_df, object_df = load_csv()
+
+        object_df = calibrate_object(object_df, log_df)
 
         enrollment_df.to_pickle('enrollment_df.pickle')
         truth_df.to_pickle('truth_df.pickle')
@@ -170,51 +387,117 @@ def to_submission(result):
 
 
 def load_feature():
-    if not os.path.isfile('feature_df.pickle'):
-        # if not (os.path.isfile('enrollment_df.pickle') or
-        #         os.path.isfile('truth_df.pickle') or
-        #         os.path.isfile('log_df.pickle') or
-        #         os.path.isfile('course_df.pickle')):
+    from .feature import append_time_series_features, append_graph_features
 
-            # enrollment_df, truth_df, log_df, course_df, object_df = load_csv()
+    if not (os.path.isfile('feature_df1.pickle') and
+            os.path.isfile('feature_df2.pickle') and
+            os.path.isfile('feature_df3.pickle') and
+            os.path.isfile('feature_df4.pickle')):
+        if not (os.path.isfile('time_series_feature_df1.pickle') and
+                os.path.isfile('time_series_feature_df2.pickle') and
+                os.path.isfile('time_series_feature_df3.pickle') and
+                os.path.isfile('time_series_feature_df4.pickle')):
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
 
-        # else:
-        enrollment_df, truth_df, log_df, course_df, object_df = load_raw()
+            del course_df
+            del truth_df
 
-        feature_df = append_features(enrollment_df, log_df)
-        feature_df.to_pickle('feature_df.pickle')
+            if not (os.path.isfile('log_object_df.pickle')):
 
-    else:
-        feature_df = pd.read_pickle('feature_df.pickle')
+                log_df.reset_index(inplace=True)
+                object_df.drop_duplicates('object', inplace=True)
+
+                log_df = log_df.merge(
+                    object_df[['object', 'category', 'week']],
+                    how='left', on='object')
+
+                log_df['object'] = log_df['object'].astype('category')
+                log_df['category'] = log_df['category'].astype('category')
+                log_df['event'] = log_df['event'].astype('category')
+                log_df['source'] = log_df['source'].astype('category')
+
+                log_df['event'].cat.add_categories([
+                    'access_server',
+                    'access_browser',
+                    'problem_server',
+                    'problem_browser'
+                ], inplace=True)
+
+                del object_df
+
+                selected_indices = ['enrollment_id', 'username', 'course_id', 'date']
+                log_df.set_index(selected_indices, inplace=True)
+
+                log_df.to_pickle('log_object_df.pickle')
+            else:
+                del object_df
+                del log_df
+
+                log_df = pd.read_pickle('log_object_df.pickle')
+
+            log_df.reset_index(inplace=True)
+            time_series_feature_df = append_time_series_features(
+                enrollment_df, log_df)
+            partial_time_series_feature_dfs = np.array_split(time_series_feature_df, 4)
+            for i, partial_time_series_feature_df in enumerate(partial_time_series_feature_dfs, 1):
+                partial_time_series_feature_df.to_pickle('time_series_feature_df%d.pickle' % i)
+        else:
+            partial_time_series_feature_dfs = []
+            for i in range(1, 5):
+                partial_time_series_feature_dfs.append(pd.read_pickle('time_series_feature_df%d.pickle' % i))
+            time_series_feature_df = pd.concat(partial_time_series_feature_dfs)
+
+        feature_df = append_graph_features(time_series_feature_df)
+        partial_feature_dfs = np.array_split(feature_df, 4)
+
+        for i, partial_feature_df in enumerate(partial_feature_dfs, 1):
+            partial_feature_df.to_pickle('feature_df%d.pickle' % i)
+
+    partial_feature_dfs = []
+    for i in range(1, 5):
+        partial_feature_dfs.append(pd.read_pickle('feature_df%d.pickle' % i))
+    feature_df = pd.concat(partial_feature_dfs)
 
     return feature_df
 
 
 def load_data():
     if not os.path.isfile('data.h5'):
-        enrollment_df, truth_df, log_df, course_df = load_raw()
+        enrollment_df, truth_df, log_df, course_df, object_df = load_df()
         feature_df = load_feature()
+
+        print('feature loaded')
 
         feature_df.set_index('enrollment_id', inplace=True)
         truth_df.set_index('enrollment_id', inplace=True)
         feature_truth_df = feature_df.join(truth_df)
 
+        del feature_df
+
+        print('feature_truth joined')
+
         train_df = feature_truth_df.dropna()
         test_df = feature_truth_df[feature_truth_df['dropout'].isnull()]
 
+        del feature_truth_df
+
         masked_features = [
-            # 'access',
+            # 'access_server',
+            # 'access_browser',
             # 'discussion',
             # 'nagivate',
             # 'page_close',
-            # 'problem',
+            # 'problem_server',
+            # 'problem_browser',
             # 'video',
             # 'wiki',
-            # 'normal_access',
+            # 'normal_access_server',
+            # 'normal_access_browser',
             # 'normal_discussion',
             # 'normal_nagivate',
             # 'normal_page_close',
-            # 'normal_problem',
+            # 'normal_problem_server',
+            # 'normal_problem_browser',
             # 'normal_video',
             # 'normal_wiki',
             # 'z0',
@@ -234,16 +517,53 @@ def load_data():
             # 'z4_total',
             # 'z5_total',
             # 'total_course',
-            'first_day',  # couse the training failed
-            'last_day'
+            # 'first_day',
+            # 'last_day',
+            # 'chapter_0',
+            # 'chapter_1',
+            # 'chapter_2',
+            # 'chapter_3',
+            # 'chapter_4',
+            # 'chapter_5',
+            # 'chapter_6',
+            # 'sequential_0',
+            # 'sequential_1',
+            # 'sequential_2',
+            # 'sequential_3',
+            # 'sequential_4',
+            # 'sequential_5',
+            # 'sequential_6',
+            # 'video_0',
+            # 'video_1',
+            # 'video_2',
+            # 'video_3',
+            # 'video_4',
+            # 'video_5',
+            # 'video_6',
+            # 'problem_0',
+            # 'problem_1',
+            # 'problem_2',
+            # 'problem_3',
+            # 'problem_4',
+            # 'problem_5',
+            # 'problem_6',
+            # 'course_0',
+            # 'course_1',
+            # 'course_2',
+            # 'course_3'
         ]
 
-        for column in ['username', 'date', 'dropout'] + masked_features:
+        for column in ['username', 'course_id', 'date', 'dropout'] + masked_features:
             del train_df[column]
             del test_df[column]
 
+        # import pdb; pdb.set_trace()
 
         x_train = np.array(np.split(train_df.values, len(train_df.index.unique())))
+        del train_df
+
+        # x_train[:, :, :9] = np.vectorize(log)(x_train[:, :, :9] + 1)
+
         # x_train = np.array([reduce(__add__, x_train[:, i:i + 5]) for i in range(0, x_train.shape[0], 5)])
 
         # squeeze_timestep = 15
@@ -256,6 +576,9 @@ def load_data():
         #     squeezed_x_train += x_train[:, i:i+squeeze_timestep]
 
         x_test = np.array(np.split(test_df.values, len(test_df.index.unique())))
+        del test_df
+
+        # x_test[:, :, :9] = np.vectorize(log)(x_test[:, :, :9] + 1)
 
         # x_test = (x_test[:, 0::3] + x_test[:, 1::3] + x_test[:, 2::3]) / 3 #+ x_test[:, 3::5] + x_test[:, 4::5]
 
@@ -270,9 +593,7 @@ def load_data():
 
         y_train = truth_df.values.flatten()
 
-        # set_trace()
-
-        # x_train, y_train, x_test = df2array(log_df)
+        del truth_df
 
         with h5py.File('data.h5', 'w') as h5f:
             h5f.create_dataset('x_train', data=x_train)
