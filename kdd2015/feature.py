@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function, division
 
-from itertools import groupby, repeat
-from collections import Counter
+from itertools import groupby, repeat, combinations
+from collections import Counter, defaultdict
 from multiprocessing import Pool
+from subprocess import call
+import os.path
 
 # from dateutil import parser
 import pandas as pd
@@ -13,6 +15,7 @@ from keras.preprocessing import sequence
 from more_itertools import chunked, flatten, first
 # from numba import jit
 
+from .data import load_df
 from .analyze import time_bound, fetch_user
 
 # from ipdb import set_trace
