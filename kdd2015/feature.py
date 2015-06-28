@@ -533,13 +533,18 @@ def extract_enrollment_features(log_df):
 
             longgest_streak = 0
             tmp_streak = 0
+            streaks = []
             for i in range(1, len(dates)):
                 if int((dates[i] - dates[i - 1]) / aday) == 1:
                     tmp_streak += 1
                     if tmp_streak > longgest_streak:
                         longgest_streak = tmp_streak
                 else:
+                    if tmp_streak > 0:
+                        streaks.append(tmp_streak)
                     tmp_streak = 0
+
+            mean_streak = mean(streaks)
 
             current_streak = 0
             expand_dates = list(map(lambda x: x + 0 * aday, dates)) + [start_date + 29 * aday]
@@ -569,6 +574,7 @@ def extract_enrollment_features(log_df):
             mean_rest = 0
             longgest_streak = 0
             current_streak = 0
+            mean_streak = 0
         else:
             raise NotImplementedError()
 
@@ -584,6 +590,7 @@ def extract_enrollment_features(log_df):
         feature_df.set_value(index, 'mean_rest', mean_rest)
         feature_df.set_value(index, 'longgest_streak', longgest_streak)
         feature_df.set_value(index, 'current_streak', current_streak)
+        feature_df.set_value(index, 'mean_streak', mean_streak)
 
     import pdb; pdb.set_trace()
 
