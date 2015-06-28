@@ -387,7 +387,7 @@ def to_submission(result):
 
 
 def load_feature():
-    from .feature import extract_time_series_features, append_graph_features, extract_enrollment_features
+    from .feature import extract_time_series_features, extract_enrollment_features
 
     with HDFStore('features.h5') as feature_store:
         if 'time_series_feature_df' not in feature_store:
@@ -455,7 +455,7 @@ def load_data():
 
         time_series_feature_df.set_index('enrollment_id', inplace=True)
         truth_df.set_index('enrollment_id', inplace=True)
-        truth_df = truth_df.head(100)
+
         time_series_feature_truth_df = time_series_feature_df.join(truth_df)
         enrollment_feature_truth_df = enrollment_feature_df.join(truth_df)
 
@@ -541,6 +541,8 @@ def load_data():
             # 'problem_4',
             # 'problem_5',
             # 'problem_6',
+            'first_day',
+            'last_day'
         ]
 
         masked_enrollment_features = [
@@ -558,6 +560,12 @@ def load_data():
             del train_time_series_df[column]
             del test_time_series_df[column]
 
+        for column in ['dropout'] + \
+                masked_enrollment_features:
+
+            del train_enrollment_df[column]
+            del test_enrollment_df[column]
+
         # import pdb; pdb.set_trace()
 
         x_time_series_train = np.array(
@@ -568,13 +576,9 @@ def load_data():
         )
         del train_time_series_df
 
-        x_enrollment_train = np.array(
-            np.split(
-                train_enrollment_df.values,
-                len(train_enrollment_df.index.unique())
-            )
-        )
+        x_enrollment_train = train_enrollment_df.values
         del train_enrollment_df
+
 
         # x_train[:, :, :9] = np.vectorize(log)(x_train[:, :, :9] + 1)
 
@@ -597,12 +601,7 @@ def load_data():
         )
         del test_time_series_df
 
-        x_enrollment_test = np.array(
-            np.split(
-                test_enrollment_df.values,
-                len(test_enrollment_df.index.unique())
-            )
-        )
+        x_enrollment_test = test_enrollment_df.values
         del test_enrollment_df
 
         # x_test[:, :, :9] = np.vectorize(log)(x_test[:, :, :9] + 1)
@@ -618,7 +617,7 @@ def load_data():
         # x_train = squeezed_x_train
         # x_test = squeezed_x_test
 
-        y_train = truth_df.values.flatten()
+        y_train = truth_df.values.flatten()[:x_enrollment_train.shape[0]]
 
         del truth_df
 
