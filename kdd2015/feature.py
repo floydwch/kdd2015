@@ -18,10 +18,7 @@ from more_itertools import chunked, flatten, first
 from .data import load_df
 from .analyze import time_bound, fetch_user
 
-# from ipdb import set_trace
-
-
-TIMESTEP_WINDOW_SIZE = 34
+COURSE_DIM = 4
 FEATURE_NAMES = [
     'access_server',
     'access_browser',
@@ -600,3 +597,123 @@ def append_time_series_features(enrollment_df, log_df):
     pool.join()
 
     return enrollment_df
+
+
+def gen_course_edges(enrollment_df):
+    enrollment_df = enrollment_df.reset_index()
+    enrollment_df.drop_duplicates('enrollment_id', inplace=True)
+    enrollment_df.reset_index(drop=True, inplace=True)
+    user_course = enrollment_df[['username', 'course_id']]
+    user_course_group = user_course.groupby('username')
+
+    graph = defaultdict(int)
+
+    # skip users's course index who only have 1 course
+    skip_user_course_index = {}
+
+    for index in user_course_group.groups.values():
+        assert len(index) > 0
+        if len(index) < 2:
+            skip_user_course_index[index[0]] = True
+            continue
+
+        for edge in combinations(
+                sorted(user_course.loc[index, 'course_id'].values), 2):
+            graph[edge] += 1
+
+    course_union_size = defaultdict(int)
+    course_user_group = user_course.groupby('course_id')
+
+    for comb in graph:
+        assert len(course_user_group.groups[comb[0]]) > 0
+        assert len(course_user_group.groups[comb[1]]) > 0
+        course_union_size[comb] = \
+            len(list(filter(lambda x: x not in skip_user_course_index,
+                course_user_group.groups[comb[0]]))) + \
+            len(list(filter(lambda x: x not in skip_user_course_index,
+                course_user_group.groups[comb[1]])))
+
+    ratio_graph = defaultdict(int)
+
+    for edge, count in graph.items():
+        assert course_union_size[edge] > 0
+        ratio_graph[edge] = count / course_union_size[edge]
+
+    return list(filter(lambda x: ratio_graph[x] >= 0.045, ratio_graph))
+
+
+def store_course_edges():
+    enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+    course_edges = gen_course_edges(enrollment_df)
+    mapping = {}
+
+    for i, node in enumerate(set(flatten(course_edges)), 1):
+        mapping[node] = i
+
+    with open('course_node_mapping.txt', 'w') as f:
+        for node in mapping:
+            f.write("%d %s\n" % (mapping[node], node))
+
+    with open('course_edges.txt', 'w') as f:
+        for edge in course_edges:
+            f.write("%s %s\n" % (mapping[edge[0]], mapping[edge[1]]))
+
+
+def store_course_embedding():
+    call([
+        'deepwalk',
+        '--input', 'course_edges.txt',
+        '--format', 'edgelist',
+        '--representation-size', str(COURSE_DIM),
+        '--output', 'course_ebd.txt'
+    ])
+
+
+def load_course_embedding():
+    graph_mapping = {}
+    graph_vectors = []
+
+    if not (os.path.isfile('course_node_mapping.txt') and
+            os.path.isfile('course_edges.txt')):
+        store_course_edges()
+
+    with open('course_node_mapping.txt') as f:
+        for line in f:
+            line = line.split()
+            i, course_id = int(line[0]), line[1]
+            graph_mapping[i] = course_id
+
+    if not os.path.isfile('course_ebd.txt'):
+        store_course_embedding()
+
+    with open('course_ebd.txt') as f:
+        next(f)
+        for line in f:
+            line = line.split()
+            i = int(line[0])
+            vectors = list(map(float, line[1:]))
+            graph_vectors.append([graph_mapping[i]] + vectors)
+
+    return graph_vectors
+
+
+def append_graph_features(feature_df):
+    COURSE_DIM = 4
+    columns = ['course_id']
+    for i in range(COURSE_DIM):
+        columns.append('course_%d' % i)
+
+    graph_vector = load_course_embedding()
+    # indexes_columns = list(graph_vector.items())
+    graph_vector_df = DataFrame(
+        graph_vector,
+        columns=columns
+    )
+
+    # graph_vector_df.reset_index(inplace=True)
+    # graph_vector_df['course_id'] = graph_vector_df['index']
+    # del graph_vector_df['index']
+
+    feature_df = feature_df.merge(graph_vector_df, how='left', on='course_id')
+
+    return feature_df
