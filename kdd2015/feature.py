@@ -23,18 +23,22 @@ from .analyze import time_bound, fetch_user
 
 TIMESTEP_WINDOW_SIZE = 34
 FEATURE_NAMES = [
-    'access',
+    'access_server',
+    'access_browser',
     'discussion',
     'nagivate',
     'page_close',
-    'problem',
+    'problem_server',
+    'problem_browser',
     'video',
     'wiki',
-    'normal_access',
+    'normal_access_server',
+    'normal_access_browser',
     'normal_discussion',
     'normal_nagivate',
     'normal_page_close',
-    'normal_problem',
+    'normal_problem_server',
+    'normal_problem_browser',
     'normal_video',
     'normal_wiki',
     'z0',
@@ -55,17 +59,35 @@ FEATURE_NAMES = [
     'z5_total',
     'total_course',
     'first_day',
-    'last_day'
-]
-
-EVENT_FEATURE_NAMES = [
-    'access',
-    'discussion',
-    'nagivate',
-    'page_close',
-    'problem',
-    'video',
-    'wiki'
+    'last_day',
+    'chapter_0',
+    'chapter_1',
+    'chapter_2',
+    'chapter_3',
+    'chapter_4',
+    'chapter_5',
+    'chapter_6',
+    'sequential_0',
+    'sequential_1',
+    'sequential_2',
+    'sequential_3',
+    'sequential_4',
+    'sequential_5',
+    'sequential_6',
+    'video_0',
+    'video_1',
+    'video_2',
+    'video_3',
+    'video_4',
+    'video_5',
+    'video_6',
+    'problem_0',
+    'problem_1',
+    'problem_2',
+    'problem_3',
+    'problem_4',
+    'problem_5',
+    'problem_6',
 ]
 
 # NORMAL_EVENT_FEATURE_NAMES = [
@@ -348,52 +370,131 @@ def _hour_zone(time):
     return zone[hour]
 
 
-# @jit
 def _get_hour(time):
     return time.hour
 
 
-# _zeors_26 = [0] * 26
+def _separate_source(enrollment_log):
+    if enrollment_log['event'] in ['access', 'problem']:
+        enrollment_log['event'] = \
+            enrollment_log['event'] + '_' + enrollment_log['source']
+        assert enrollment_log['event'] in [
+            'access_server',
+            'access_browser',
+            'problem_server',
+            'problem_browser'
+        ]
+
+    return enrollment_log
+
+
+def _extract_weeks(enrollment_log):
+    video_weeks = [0] * 7
+    problem_weeks = [0] * 7
+    chapter_weeks = [0] * 7
+    sequential_weeks = [0] * 7
+
+    if enrollment_log['category'] == 'video':
+        assert enrollment_log['week'] >= 0
+        if enrollment_log['week'] < 6:
+            video_weeks[int(enrollment_log['week'])] += 1
+        else:
+            video_weeks[6] += 1
+    elif enrollment_log['category'] == 'problem':
+        assert enrollment_log['week'] >= 0
+        if enrollment_log['week'] < 6:
+            problem_weeks[int(enrollment_log['week'])] += 1
+        else:
+            problem_weeks[6] += 1
+    elif enrollment_log['category'] == 'chapter':
+        assert enrollment_log['week'] >= 0
+        if enrollment_log['week'] < 6:
+            chapter_weeks[int(enrollment_log['week'])] += 1
+        else:
+            chapter_weeks[6] += 1
+    elif enrollment_log['category'] == 'sequential':
+        assert enrollment_log['week'] >= 0
+        if enrollment_log['week'] < 6:
+            sequential_weeks[int(enrollment_log['week'])] += 1
+        else:
+            sequential_weeks[6] += 1
+
+    return array(video_weeks), array(problem_weeks), \
+        array(chapter_weeks), array(sequential_weeks)
+
 
 def _extract_date_event_freq(index, log_df):
         print(index[0])
         enrollment_id, date, username = index[0], index[1], index[2]
 
-        features = Series(zeros(33), FEATURE_NAMES)
-        # set_trace()
-
-        # if date not in log_df.index.levels[1]:
-        #     set_trace()
-        #     return features
+        features = Series(zeros(len(FEATURE_NAMES)), FEATURE_NAMES)
 
         user_logs = log_df.xs(date, level='date')
         if user_logs.shape[0] > 0:
             if enrollment_id in user_logs.index:
                 enrollment_logs = user_logs.loc[enrollment_id]
-                # set_trace()
                 if isinstance(enrollment_logs, DataFrame):
-                    freqs = enrollment_logs['event'].value_counts(sort=False).values
+                    enrollment_logs = enrollment_logs.apply(
+                        _separate_source, axis=1)
+                    freqs = enrollment_logs['event'].value_counts(sort=False).to_dict()
                     hour_zones = enrollment_logs['time'].map(_hour_zone).value_counts(sort=False, normalize=True).to_dict()
                     hour_distri = enrollment_logs['time'].map(_get_hour).value_counts(sort=False).to_dict().keys()
+
+                    video_weeks = zeros(7)
+                    problem_weeks = zeros(7)
+                    chapter_weeks = zeros(7)
+                    sequential_weeks = zeros(7)
+
+                    for _, enrollment_log in enrollment_logs[['category', 'week']].iterrows():
+
+                        if enrollment_log['category'] == 'video':
+                            assert enrollment_log['week'] >= 0
+                            if enrollment_log['week'] < 6:
+                                video_weeks[int(enrollment_log['week'])] += 1
+                            else:
+                                video_weeks[6] += 1
+                        elif enrollment_log['category'] == 'problem':
+                            assert enrollment_log['week'] >= 0
+                            if enrollment_log['week'] < 6:
+                                problem_weeks[int(enrollment_log['week'])] += 1
+                            else:
+                                problem_weeks[6] += 1
+                        elif enrollment_log['category'] == 'chapter':
+                            assert enrollment_log['week'] >= 0
+                            if enrollment_log['week'] < 6:
+                                chapter_weeks[int(enrollment_log['week'])] += 1
+                            else:
+                                chapter_weeks[6] += 1
+                        elif enrollment_log['category'] == 'sequential':
+                            assert enrollment_log['week'] >= 0
+                            if enrollment_log['week'] < 6:
+                                sequential_weeks[int(enrollment_log['week'])] += 1
+                            else:
+                                sequential_weeks[6] += 1
                 else:
-                    freqs = zeros(7)
-                    freqs[FEATURE_NAMES.index(enrollment_logs['event'])] = 1
+                    if enrollment_logs['event'] in ['access', 'problem']:
+                        enrollment_logs.set_value('event', enrollment_logs['event'] + '_' + enrollment_logs['source'])
+                        assert enrollment_logs['event'] in [
+                            'access_server',
+                            'access_browser',
+                            'problem_server',
+                            'problem_browser'
+                        ]
+                    freqs = {}
+                    freqs[enrollment_logs['event']] = 1
                     hour_zones = {_hour_zone(enrollment_logs['time'])[0]: 1}
                     hour_distri = [_get_hour(enrollment_logs['time'])]
+                    video_weeks, problem_weeks, \
+                        chapter_weeks, sequential_weeks = \
+                        _extract_weeks(enrollment_logs)
 
-                for i, freq in enumerate(freqs):
-                    features.iloc[i] = freq
-
-                freqs_sum = freqs.sum()
+                freqs_sum = sum(freqs.values())
                 assert freqs_sum >= 0
 
-                if freqs_sum > 0:
-                    normal_freqs = freqs / freqs_sum
-                else:
-                    normal_freqs = freqs
-
-                for i, freq in enumerate(normal_freqs):
-                    features.iloc[i + 7] = freq
+                for event, freq in freqs.items():
+                    assert freqs_sum > 0
+                    features[event] = freq
+                    features['normal_' + event] = freq / freqs_sum
 
                 for zone in ZONE_FEATURE_NAMES:
                     features[zone] = hour_zones.get(zone, 0)
@@ -427,11 +528,15 @@ def _extract_date_event_freq(index, log_df):
                 total_course = user_logs['course_id'].unique().shape[0]
                 features['total_course'] = total_course
 
-                # set_trace()
                 total_hour_zones = user_logs['time'].map(_hour_zone).value_counts(sort=False, normalize=True).to_dict()
                 for zone in ZONE_FEATURE_NAMES:
                     features[zone + '_total'] = total_hour_zones.get(zone, 0)
 
+                for i in range(7):
+                    features['video_' + str(i)] = video_weeks[i]
+                    features['problem_' + str(i)] = problem_weeks[i]
+                    features['chapter_' + str(i)] = chapter_weeks[i]
+                    features['sequential_' + str(i)] = sequential_weeks[i]
         # if total_course > 0:
         #     dropout_stat = user_logs[['enrollment_id', 'dropout']].drop_duplicates()['dropout'].value_counts().to_dict()
         #     dropout_count = dropout_stat.get(1, 0)
@@ -442,94 +547,56 @@ def _extract_date_event_freq(index, log_df):
         #     dropout_prob = 0.5
 
         # features['dropout_prob'] = dropout_prob
-        # set_trace()
         return features
 
 
 def _extract_enrollment_event_freq(args):
     index, log_df = args[0], args[1]
     enrollment_id, dates, username = index[0], index[1], index[2]
-    # print(index)
-    # set_trace()
-    # freqs = log_df.loc(index)['event'].value_counts(sort=False).values
-    # categories = log_df['event'].cat.categories.values
-    # multi_index = MultiIndex.from_arrays([, RANGE_30], names=['enrollment_id', 'day'])
     event_freq_df = DataFrame(index=range(30), columns=['enrollment_id', 'date', 'username'])
-    # event_freq_df.index.name = 'day'
     event_freq_df['enrollment_id'] = [enrollment_id for i in range(30)]
     event_freq_df['date'] = dates
     event_freq_df['username'] = [username for i in range(30)]
-    # set_trace()
-    # event_freq_df.reset_index(inplace=True)
+
+    del dates
+    del index
+
     log_df = log_df.xs(username, level='username')
-    # set_trace()
     event_freq_df = event_freq_df.apply(_extract_date_event_freq, axis=1, args=(log_df,))
-    # set_trace()
-    # freqs = log_df.xs(
-    #     [index[0], dates],
-    #     level=['enrollment_id', 'date']).value_counts(sort=False).values
-    # freqs = [freqs_dict[freq_key] for freq_key in categories]
-    # try:
     first_day = event_freq_df[event_freq_df['hour_count'] != 0].index[0]
     last_day = event_freq_df[event_freq_df['hour_count'] != 0].index[-1]
-    # set_trace()
-    # except:
-    #     set_trace()
-    # set_trace()
     event_freq_df['first_day'] = first_day
     event_freq_df['last_day'] = last_day
-    # set_trace()
-    # event_freq_df.loc[0] = freqs
-    # set_trace()
+
     return event_freq_df
 
 
-def append_features(enrollment_df, log_df):
-    # def extract_event_freq(index):
-    #     print(index)
-    #     freqs = log_df.xs(
-    #         index,
-    #         level=['enrollment_id', 'date'])['event'].value_counts(
-    #             sort=False).values
-    #     categories = log_df['event'].cat.categories.values
-    #     return Series(freqs, categories)
-    # njob = 4
-
-    log_df = log_df.reset_index()
+def append_time_series_features(enrollment_df, log_df):
     log_df.set_index(['enrollment_id', 'date', 'username'], inplace=True)
-    # log_df = log_df['event']
 
-    # enrollment_df.reset_index(inplace=True)
-    enrollment_df = enrollment_df[['date', 'username']]
+    enrollment_df = enrollment_df[['date', 'username', 'course_id']]
     enrollment_df.index = enrollment_df.index.droplevel(1)
-    # set_trace()
-    # indices = [(i, enrollment_df.xs(i, level='enrollment_id')['date']
-    #             ) for i in enrollment_df.index.get_level_values(
-    #                 'enrollment_id').unique()]
-    # set_trace()
-    records = [(i, enrollment_df.loc[i]['date'].values, enrollment_df.loc[i]['username'].iloc[0]) for i in enrollment_df.index.unique()]
-    # set_trace()
-    pool = Pool()
+
+    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()]
+
+    log_df.sortlevel(2, inplace=True)
+
+    del log_df['start_date']
+    del log_df['end_date']
+    del log_df['object']
+    del log_df['train']
+
+    pool = Pool(10)
     partial_event_freq_df = pool.map(
         _extract_enrollment_event_freq,
         zip(records, repeat(log_df)))
-    # set_trace()
+
     event_freq_df = pd.concat(partial_event_freq_df)
-    # set_trace()
     event_freq_df.reset_index(drop=True, inplace=True)
     enrollment_df.reset_index(inplace=True)
-    # set_trace()
     enrollment_df = enrollment_df.join(event_freq_df)
-    # enrollment_df.set_index('enrollment_id', inplace=True)
-    # set_trace()
-
-    # enrollment_df = enrollment_df.join(
-    #     enrollment_df[['enrollment_id', 'date']].apply(
-    #         extract_event_freq, axis=1))
 
     pool.close()
     pool.join()
-
-    # set_trace()
 
     return enrollment_df
