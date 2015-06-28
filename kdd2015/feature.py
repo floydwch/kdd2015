@@ -9,8 +9,10 @@ import os.path
 
 # from dateutil import parser
 import pandas as pd
+import numpy as np
 from pandas import date_range, DataFrame, Series, IndexSlice, MultiIndex
-from numpy import array, vstack, random, zeros, array_split
+from pandas.tslib import Timestamp
+from numpy import array, vstack, random, zeros, array_split, mean
 from keras.preprocessing import sequence
 from more_itertools import chunked, flatten, first
 # from numba import jit
@@ -497,5 +499,88 @@ def append_graph_features(feature_df):
     # del graph_vector_df['index']
 
     feature_df = feature_df.merge(graph_vector_df, how='left', on='course_id')
+
+    return feature_df
+
+
+def extract_enrollment_features(log_df):
+    log_df.reset_index(inplace=True)
+    log_df.set_index('enrollment_id', drop=True, inplace=True)
+
+    feature_df = DataFrame()
+
+    for index in log_df.index.unique():
+        # import pdb; pdb.set_trace()
+
+        start_date_series = log_df.loc[index, 'start_date']
+        if isinstance(start_date_series, Series):
+            start_date = start_date_series.iloc[0]
+            start_dayofyear = start_date.dayofyear
+        elif isinstance(start_date_series, Timestamp):
+            start_date = start_date_series
+            start_dayofyear = start_date.dayofyear
+        else:
+            raise NotImplementedError()
+
+        date_series = log_df.loc[index, 'date']
+        if isinstance(date_series, Series):
+            first_day = date_series.iloc[0]
+            last_day = date_series.iloc[-1]
+
+            dates = date_series.unique()
+            rests = []
+            aday = np.timedelta64(1, 'D')
+
+            longgest_streak = 0
+            tmp_streak = 0
+            for i in range(1, len(dates)):
+                if int((dates[i] - dates[i - 1]) / aday) == 1:
+                    tmp_streak += 1
+                    if tmp_streak > longgest_streak:
+                        longgest_streak = tmp_streak
+                else:
+                    tmp_streak = 0
+
+            current_streak = 0
+            expand_dates = list(map(lambda x: x + 0 * aday, dates)) + [start_date + 29 * aday]
+            for i in range(len(expand_dates) - 1, 0, -1):
+                if int((expand_dates[i] - expand_dates[i - 1]) / aday) <= 1:
+                    current_streak += 1
+                else:
+                    break
+
+            if len(dates) > 1:
+                for i in range(1, len(dates)):
+                    rests.append(int((dates[i] - dates[i - 1]) / aday))
+
+                max_rest = max(rests)
+                min_rest = min(rests)
+                mean_rest = mean(rests)
+            else:
+                max_rest = 0
+                min_rest = 0
+                mean_rest = 0
+
+        elif isinstance(date_series, Timestamp):
+            first_day = date_series
+            last_day = date_series
+            max_rest = 0
+            min_rest = 0
+            mean_rest = 0
+            longgest_streak = 0
+            current_streak = 0
+        else:
+            raise NotImplementedError()
+
+        feature_df.set_value(index, 'first_day', first_day)
+        feature_df.set_value(index, 'last_day', last_day)
+        feature_df.set_value(index, 'start_dayofyear', start_dayofyear)
+        feature_df.set_value(index, 'max_rest', max_rest)
+        feature_df.set_value(index, 'min_rest', min_rest)
+        feature_df.set_value(index, 'mean_rest', mean_rest)
+        feature_df.set_value(index, 'longgest_streak', longgest_streak)
+        feature_df.set_value(index, 'current_streak', current_streak)
+
+    import pdb; pdb.set_trace()
 
     return feature_df
