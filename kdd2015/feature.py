@@ -20,6 +20,7 @@ from more_itertools import chunked, flatten, first
 from .data import load_df
 from .analyze import time_bound, fetch_user
 
+
 COURSE_DIM = 4
 FEATURE_NAMES = [
     'access_server',
@@ -510,8 +511,12 @@ def extract_enrollment_features(log_df):
     feature_df = DataFrame()
     feature_df.index.names = ['enrollment_id']
 
-    for index in log_df.index.unique():
+    for index in log_df.index.unique()[:100]:
         # import pdb; pdb.set_trace()
+
+        course_id = log_df.loc[index, 'course_id']
+        if isinstance(course_id, Series):
+            course_id = course_id.iloc[0]
 
         start_date_series = log_df.loc[index, 'start_date']
         if isinstance(start_date_series, Series):
@@ -587,6 +592,7 @@ def extract_enrollment_features(log_df):
 
         # import pdb; pdb.set_trace()
 
+        feature_df.set_value(index, 'course_id', course_id)
         feature_df.set_value(index, 'late_day', (first_day - start_date).days)
         feature_df.set_value(index, 'leave_early_day', (last_day - start_date).days)
         feature_df.set_value(index, 'first_dayofyear', first_day.dayofyear)
@@ -600,5 +606,10 @@ def extract_enrollment_features(log_df):
         feature_df.set_value(index, 'mean_streak', mean_streak)
 
         # import pdb; pdb.set_trace()
+
+    feature_df = append_graph_features(feature_df)
+    # import pdb; pdb.set_trace()
+
+    del feature_df['course_id']
 
     return feature_df
