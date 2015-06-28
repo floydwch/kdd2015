@@ -348,13 +348,13 @@ def _extract_enrollment_event_freq(args):
     return event_freq_df
 
 
-def append_time_series_features(enrollment_df, log_df):
+def extract_time_series_features(enrollment_df, log_df):
     log_df.set_index(['enrollment_id', 'date', 'username'], inplace=True)
 
     enrollment_df = enrollment_df[['date', 'username', 'course_id']]
     enrollment_df.index = enrollment_df.index.droplevel(1)
 
-    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()]
+    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()[:100]]
 
     log_df.sortlevel(2, inplace=True)
 
@@ -363,8 +363,8 @@ def append_time_series_features(enrollment_df, log_df):
     del log_df['object']
     del log_df['train']
 
-    pool = Pool(10)
-    partial_event_freq_df = pool.map(
+    # pool = Pool(10)
+    partial_event_freq_df = map(
         _extract_enrollment_event_freq,
         zip(records, repeat(log_df)))
 
@@ -373,8 +373,10 @@ def append_time_series_features(enrollment_df, log_df):
     enrollment_df.reset_index(inplace=True)
     enrollment_df = enrollment_df.join(event_freq_df)
 
-    pool.close()
-    pool.join()
+    enrollment_df.dropna(inplace=True)
+
+    # pool.close()
+    # pool.join()
 
     return enrollment_df
 

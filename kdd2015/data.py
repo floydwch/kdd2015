@@ -387,101 +387,85 @@ def to_submission(result):
 
 
 def load_feature():
-    from .feature import append_time_series_features, append_graph_features
+    from .feature import extract_time_series_features, append_graph_features
 
-    if not (os.path.isfile('feature_df1.pickle') and
-            os.path.isfile('feature_df2.pickle') and
-            os.path.isfile('feature_df3.pickle') and
-            os.path.isfile('feature_df4.pickle')):
-        if not (os.path.isfile('time_series_feature_df1.pickle') and
-                os.path.isfile('time_series_feature_df2.pickle') and
-                os.path.isfile('time_series_feature_df3.pickle') and
-                os.path.isfile('time_series_feature_df4.pickle')):
-            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+    if not os.path.isfile('time_series_feature_df.pickle'):
+        enrollment_df, truth_df, log_df, course_df, object_df = load_df()
 
-            del course_df
-            del truth_df
+        del course_df
+        del truth_df
 
-            if not (os.path.isfile('log_object_df.pickle')):
-
-                log_df.reset_index(inplace=True)
-                object_df.drop_duplicates('object', inplace=True)
-
-                log_df = log_df.merge(
-                    object_df[['object', 'category', 'week']],
-                    how='left', on='object')
-
-                log_df['object'] = log_df['object'].astype('category')
-                log_df['category'] = log_df['category'].astype('category')
-                log_df['event'] = log_df['event'].astype('category')
-                log_df['source'] = log_df['source'].astype('category')
-
-                log_df['event'].cat.add_categories([
-                    'access_server',
-                    'access_browser',
-                    'problem_server',
-                    'problem_browser'
-                ], inplace=True)
-
-                del object_df
-
-                selected_indices = ['enrollment_id', 'username', 'course_id', 'date']
-                log_df.set_index(selected_indices, inplace=True)
-
-                log_df.to_pickle('log_object_df.pickle')
-            else:
-                del object_df
-                del log_df
-
-                log_df = pd.read_pickle('log_object_df.pickle')
+        if not (os.path.isfile('log_object_df.pickle')):
 
             log_df.reset_index(inplace=True)
-            time_series_feature_df = append_time_series_features(
-                enrollment_df, log_df)
-            partial_time_series_feature_dfs = np.array_split(time_series_feature_df, 4)
-            for i, partial_time_series_feature_df in enumerate(partial_time_series_feature_dfs, 1):
-                partial_time_series_feature_df.to_pickle('time_series_feature_df%d.pickle' % i)
+            object_df.drop_duplicates('object', inplace=True)
+
+            log_df = log_df.merge(
+                object_df[['object', 'category', 'week']],
+                how='left', on='object')
+
+            log_df['object'] = log_df['object'].astype('category')
+            log_df['category'] = log_df['category'].astype('category')
+            log_df['event'] = log_df['event'].astype('category')
+            log_df['source'] = log_df['source'].astype('category')
+
+            log_df['event'].cat.add_categories([
+                'access_server',
+                'access_browser',
+                'problem_server',
+                'problem_browser'
+            ], inplace=True)
+
+            del object_df
+
+            selected_indices = [
+                'enrollment_id', 'username', 'course_id', 'date'
+            ]
+            log_df.set_index(selected_indices, inplace=True)
+
+            log_df.to_pickle('log_object_df.pickle')
         else:
-            partial_time_series_feature_dfs = []
-            for i in range(1, 5):
-                partial_time_series_feature_dfs.append(pd.read_pickle('time_series_feature_df%d.pickle' % i))
-            time_series_feature_df = pd.concat(partial_time_series_feature_dfs)
+            del object_df
+            del log_df
 
-        feature_df = append_graph_features(time_series_feature_df)
-        partial_feature_dfs = np.array_split(feature_df, 4)
+            log_df = pd.read_pickle('log_object_df.pickle')
 
-        for i, partial_feature_df in enumerate(partial_feature_dfs, 1):
-            partial_feature_df.to_pickle('feature_df%d.pickle' % i)
+        log_df.reset_index(inplace=True)
+        time_series_feature_df = extract_time_series_features(
+            enrollment_df, log_df)
 
-    partial_feature_dfs = []
-    for i in range(1, 5):
-        partial_feature_dfs.append(pd.read_pickle('feature_df%d.pickle' % i))
-    feature_df = pd.concat(partial_feature_dfs)
+        time_series_feature_df.to_pickle('time_series_feature_df.pickle')
+    else:
+        time_series_feature_df = pd.read_pickle(
+            'time_series_feature_df.pickle')
 
-    return feature_df
+    return time_series_feature_df
 
 
 def load_data():
     if not os.path.isfile('data.h5'):
         enrollment_df, truth_df, log_df, course_df, object_df = load_df()
-        feature_df = load_feature()
+        time_series_feature_df = load_feature()
 
         print('feature loaded')
 
-        feature_df.set_index('enrollment_id', inplace=True)
+        time_series_feature_df.set_index('enrollment_id', inplace=True)
         truth_df.set_index('enrollment_id', inplace=True)
-        feature_truth_df = feature_df.join(truth_df)
+        truth_df = truth_df.head(100)
+        time_series_feature_truth_df = time_series_feature_df.join(truth_df)
 
-        del feature_df
+        del time_series_feature_df
 
         print('feature_truth joined')
 
-        train_df = feature_truth_df.dropna()
-        test_df = feature_truth_df[feature_truth_df['dropout'].isnull()]
+        train_time_series_df = time_series_feature_truth_df.dropna()
+        test_time_series_df = time_series_feature_truth_df[
+            time_series_feature_truth_df['dropout'].isnull()
+        ]
 
-        del feature_truth_df
+        del time_series_feature_truth_df
 
-        masked_features = [
+        masked_time_series_features = [
             # 'access_server',
             # 'access_browser',
             # 'discussion',
@@ -517,8 +501,6 @@ def load_data():
             # 'z4_total',
             # 'z5_total',
             # 'total_course',
-            # 'first_day',
-            # 'last_day',
             # 'chapter_0',
             # 'chapter_1',
             # 'chapter_2',
@@ -547,20 +529,32 @@ def load_data():
             # 'problem_4',
             # 'problem_5',
             # 'problem_6',
+        ]
+
+        masked_enrollment_features = [
             # 'course_0',
             # 'course_1',
             # 'course_2',
-            # 'course_3'
+            # 'course_3',
+            # 'first_day',
+            # 'last_day',
         ]
 
-        for column in ['username', 'course_id', 'date', 'dropout'] + masked_features:
-            del train_df[column]
-            del test_df[column]
+        for column in ['username', 'course_id', 'date', 'dropout'] + \
+                masked_time_series_features:
+
+            del train_time_series_df[column]
+            del test_time_series_df[column]
 
         # import pdb; pdb.set_trace()
 
-        x_train = np.array(np.split(train_df.values, len(train_df.index.unique())))
-        del train_df
+        x_time_series_train = np.array(
+            np.split(
+                train_time_series_df.values,
+                len(train_time_series_df.index.unique())
+            )
+        )
+        del train_time_series_df
 
         # x_train[:, :, :9] = np.vectorize(log)(x_train[:, :, :9] + 1)
 
@@ -575,8 +569,13 @@ def load_data():
         # for i in range(squeeze_timestep, 30, squeeze_timestep):
         #     squeezed_x_train += x_train[:, i:i+squeeze_timestep]
 
-        x_test = np.array(np.split(test_df.values, len(test_df.index.unique())))
-        del test_df
+        x_time_series_test = np.array(
+            np.split(
+                test_time_series_df.values,
+                len(test_time_series_df.index.unique())
+            )
+        )
+        del test_time_series_df
 
         # x_test[:, :, :9] = np.vectorize(log)(x_test[:, :, :9] + 1)
 
@@ -596,13 +595,13 @@ def load_data():
         del truth_df
 
         with h5py.File('data.h5', 'w') as h5f:
-            h5f.create_dataset('x_train', data=x_train)
+            h5f.create_dataset('x_time_series_train', data=x_time_series_train)
             h5f.create_dataset('y_train', data=y_train)
-            h5f.create_dataset('x_test', data=x_test)
+            h5f.create_dataset('x_time_series_test', data=x_time_series_test)
     else:
         with h5py.File('data.h5', 'r') as h5f:
-            x_train = h5f['x_train'][:]
+            x_time_series_train = h5f['x_time_series_train'][:]
             y_train = h5f['y_train'][:]
-            x_test = h5f['x_test'][:]
+            x_time_series_test = h5f['x_time_series_test'][:]
 
-    return x_train, y_train, x_test
+    return x_time_series_train, y_train, x_time_series_test
