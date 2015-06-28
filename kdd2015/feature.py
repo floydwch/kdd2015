@@ -572,8 +572,12 @@ def extract_enrollment_features(log_df):
         else:
             raise NotImplementedError()
 
-        feature_df.set_value(index, 'first_day', first_day)
-        feature_df.set_value(index, 'last_day', last_day)
+        # import pdb; pdb.set_trace()
+
+        feature_df.set_value(index, 'late_day', (first_day - start_date).days)
+        feature_df.set_value(index, 'leave_early_day', (last_day - start_date).days)
+        feature_df.set_value(index, 'first_dayofyear', first_day.dayofyear)
+        feature_df.set_value(index, 'last_dayofyear', last_day.dayofyear)
         feature_df.set_value(index, 'start_dayofyear', start_dayofyear)
         feature_df.set_value(index, 'max_rest', max_rest)
         feature_df.set_value(index, 'min_rest', min_rest)
