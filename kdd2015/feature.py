@@ -559,9 +559,9 @@ def extract_enrollment_features(log_df):
                 for i in range(1, len(dates)):
                     rests.append(int((dates[i] - dates[i - 1]) / aday))
 
-                max_rest = max(rests)
-                min_rest = min(rests)
-                mean_rest = mean(rests)
+                max_rest = max(rests) - 1
+                min_rest = min(rests) - 1
+                mean_rest = mean(array(rests) - 1)
             else:
                 max_rest = 0
                 min_rest = 0
@@ -593,6 +593,6 @@ def extract_enrollment_features(log_df):
         feature_df.set_value(index, 'current_streak', current_streak)
         feature_df.set_value(index, 'mean_streak', mean_streak)
 
-    import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
     return feature_df
