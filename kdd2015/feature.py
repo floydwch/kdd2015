@@ -545,7 +545,13 @@ def extract_enrollment_features(log_df):
                         streaks.append(tmp_streak)
                     tmp_streak = 0
 
-            mean_streak = mean(streaks)
+            if len(streaks) == 0:
+                if longgest_streak > 0:
+                    mean_streak = longgest_streak
+                else:
+                    mean_streak = 0
+            else:
+                mean_streak = mean(streaks)
 
             current_streak = 0
             expand_dates = list(map(lambda x: x + 0 * aday, dates)) + [start_date + 29 * aday]
