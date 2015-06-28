@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import gc
-gc.disable()
-
 import pandas as pd
 
-pd.set_option('display.max_colwidth', 10)
+gc.disable()
+
+
+pd.set_option('display.max_colwidth', 50)
+pd.set_option('display.max_rows', 500)
 pd.set_option('display.width', None)

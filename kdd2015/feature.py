@@ -357,7 +357,7 @@ def extract_time_series_features(enrollment_df, log_df):
     enrollment_df = enrollment_df[['date', 'username', 'course_id']]
     enrollment_df.index = enrollment_df.index.droplevel(1)
 
-    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()[:100]]
+    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()[:3000]]
 
     log_df.sortlevel(2, inplace=True)
 
@@ -511,7 +511,7 @@ def extract_enrollment_features(log_df):
     feature_df = DataFrame()
     feature_df.index.names = ['enrollment_id']
 
-    for index in log_df.index.unique()[:100]:
+    for index in log_df.index.unique()[:3000]:
         # import pdb; pdb.set_trace()
 
         course_id = log_df.loc[index, 'course_id']
