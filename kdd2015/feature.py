@@ -508,6 +508,7 @@ def extract_enrollment_features(log_df):
     log_df.set_index('enrollment_id', drop=True, inplace=True)
 
     feature_df = DataFrame()
+    feature_df.index.names = ['enrollment_id']
 
     for index in log_df.index.unique():
         # import pdb; pdb.set_trace()
