@@ -7,7 +7,7 @@ from datetime import datetime
 import os.path
 import logging
 
-from pandas import MultiIndex, DataFrame, Series
+from pandas import MultiIndex, DataFrame, Series, HDFStore
 from pandas.tseries.offsets import DateOffset
 # from more_itertools import flatten
 import pandas as pd
@@ -389,55 +389,55 @@ def to_submission(result):
 def load_feature():
     from .feature import extract_time_series_features, append_graph_features
 
-    if not os.path.isfile('time_series_feature_df.pickle'):
-        enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+    with HDFStore('features.h5') as feature_store:
+        if 'time_series_feature_df' not in feature_store:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
 
-        del course_df
-        del truth_df
+            del course_df
+            del truth_df
 
-        if not (os.path.isfile('log_object_df.pickle')):
+            if not (os.path.isfile('log_object_df.pickle')):
+
+                log_df.reset_index(inplace=True)
+                object_df.drop_duplicates('object', inplace=True)
+
+                log_df = log_df.merge(
+                    object_df[['object', 'category', 'week']],
+                    how='left', on='object')
+
+                log_df['object'] = log_df['object'].astype('category')
+                log_df['category'] = log_df['category'].astype('category')
+                log_df['event'] = log_df['event'].astype('category')
+                log_df['source'] = log_df['source'].astype('category')
+
+                log_df['event'].cat.add_categories([
+                    'access_server',
+                    'access_browser',
+                    'problem_server',
+                    'problem_browser'
+                ], inplace=True)
+
+                del object_df
+
+                selected_indices = [
+                    'enrollment_id', 'username', 'course_id', 'date'
+                ]
+                log_df.set_index(selected_indices, inplace=True)
+
+                log_df.to_pickle('log_object_df.pickle')
+            else:
+                del object_df
+                del log_df
+
+                log_df = pd.read_pickle('log_object_df.pickle')
 
             log_df.reset_index(inplace=True)
-            object_df.drop_duplicates('object', inplace=True)
+            time_series_feature_df = extract_time_series_features(
+                enrollment_df, log_df)
 
-            log_df = log_df.merge(
-                object_df[['object', 'category', 'week']],
-                how='left', on='object')
-
-            log_df['object'] = log_df['object'].astype('category')
-            log_df['category'] = log_df['category'].astype('category')
-            log_df['event'] = log_df['event'].astype('category')
-            log_df['source'] = log_df['source'].astype('category')
-
-            log_df['event'].cat.add_categories([
-                'access_server',
-                'access_browser',
-                'problem_server',
-                'problem_browser'
-            ], inplace=True)
-
-            del object_df
-
-            selected_indices = [
-                'enrollment_id', 'username', 'course_id', 'date'
-            ]
-            log_df.set_index(selected_indices, inplace=True)
-
-            log_df.to_pickle('log_object_df.pickle')
+            feature_store['time_series_feature_df'] = time_series_feature_df
         else:
-            del object_df
-            del log_df
-
-            log_df = pd.read_pickle('log_object_df.pickle')
-
-        log_df.reset_index(inplace=True)
-        time_series_feature_df = extract_time_series_features(
-            enrollment_df, log_df)
-
-        time_series_feature_df.to_pickle('time_series_feature_df.pickle')
-    else:
-        time_series_feature_df = pd.read_pickle(
-            'time_series_feature_df.pickle')
+            time_series_feature_df = feature_store['time_series_feature_df']
 
     return time_series_feature_df
 
