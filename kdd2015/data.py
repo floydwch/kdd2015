@@ -387,7 +387,7 @@ def to_submission(result):
 
 
 def load_feature():
-    from .feature import extract_time_series_features, append_graph_features
+    from .feature import extract_time_series_features, append_graph_features, extract_enrollment_features
 
     with HDFStore('features.h5') as feature_store:
         if 'time_series_feature_df' not in feature_store:
@@ -439,13 +439,17 @@ def load_feature():
         else:
             time_series_feature_df = feature_store['time_series_feature_df']
 
-    return time_series_feature_df
+        if 'enrollment_feature_df' not in feature_store:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+            enrollment_feature_df = extract_enrollment_features(log_df)
+
+    return time_series_feature_df, enrollment_feature_df
 
 
 def load_data():
     if not os.path.isfile('data.h5'):
         enrollment_df, truth_df, log_df, course_df, object_df = load_df()
-        time_series_feature_df = load_feature()
+        time_series_feature_df, enrollment_feature_df = load_feature()
 
         print('feature loaded')
 
@@ -453,8 +457,10 @@ def load_data():
         truth_df.set_index('enrollment_id', inplace=True)
         truth_df = truth_df.head(100)
         time_series_feature_truth_df = time_series_feature_df.join(truth_df)
+        enrollment_feature_truth_df = enrollment_feature_df.join(truth_df)
 
         del time_series_feature_df
+        del enrollment_feature_df
 
         print('feature_truth joined')
 
@@ -463,7 +469,13 @@ def load_data():
             time_series_feature_truth_df['dropout'].isnull()
         ]
 
+        train_enrollment_df = enrollment_feature_truth_df.dropna()
+        test_enrollment_df = enrollment_feature_truth_df[
+            enrollment_feature_truth_df['dropout'].isnull()
+        ]
+
         del time_series_feature_truth_df
+        del enrollment_feature_truth_df
 
         masked_time_series_features = [
             # 'access_server',
@@ -556,6 +568,14 @@ def load_data():
         )
         del train_time_series_df
 
+        x_enrollment_train = np.array(
+            np.split(
+                train_enrollment_df.values,
+                len(train_enrollment_df.index.unique())
+            )
+        )
+        del train_enrollment_df
+
         # x_train[:, :, :9] = np.vectorize(log)(x_train[:, :, :9] + 1)
 
         # x_train = np.array([reduce(__add__, x_train[:, i:i + 5]) for i in range(0, x_train.shape[0], 5)])
@@ -577,6 +597,14 @@ def load_data():
         )
         del test_time_series_df
 
+        x_enrollment_test = np.array(
+            np.split(
+                test_enrollment_df.values,
+                len(test_enrollment_df.index.unique())
+            )
+        )
+        del test_enrollment_df
+
         # x_test[:, :, :9] = np.vectorize(log)(x_test[:, :, :9] + 1)
 
         # x_test = (x_test[:, 0::3] + x_test[:, 1::3] + x_test[:, 2::3]) / 3 #+ x_test[:, 3::5] + x_test[:, 4::5]
@@ -596,12 +624,16 @@ def load_data():
 
         with h5py.File('data.h5', 'w') as h5f:
             h5f.create_dataset('x_time_series_train', data=x_time_series_train)
-            h5f.create_dataset('y_train', data=y_train)
             h5f.create_dataset('x_time_series_test', data=x_time_series_test)
+            h5f.create_dataset('x_enrollment_train', data=x_enrollment_train)
+            h5f.create_dataset('x_enrollment_test', data=x_enrollment_test)
+            h5f.create_dataset('y_train', data=y_train)
     else:
         with h5py.File('data.h5', 'r') as h5f:
             x_time_series_train = h5f['x_time_series_train'][:]
-            y_train = h5f['y_train'][:]
             x_time_series_test = h5f['x_time_series_test'][:]
+            x_enrollment_train = h5f['x_enrollment_train'][:]
+            x_enrollment_test = h5f['x_enrollment_test'][:]
+            y_train = h5f['y_train'][:]
 
-    return x_time_series_train, y_train, x_time_series_test
+    return x_time_series_train, x_enrollment_train, y_train, x_time_series_test, x_enrollment_test
