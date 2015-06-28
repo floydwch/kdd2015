@@ -605,10 +605,10 @@ def extract_enrollment_features(log_df):
         feature_df.set_value(index, 'current_streak', current_streak)
         feature_df.set_value(index, 'mean_streak', mean_streak)
 
-        # import pdb; pdb.set_trace()
 
+    feature_df.reset_index(inplace=True)
     feature_df = append_graph_features(feature_df)
-    # import pdb; pdb.set_trace()
+    feature_df.set_index('enrollment_id', inplace=True)
 
     del feature_df['course_id']
 
