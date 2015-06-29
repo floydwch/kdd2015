@@ -510,32 +510,48 @@ def extract_enrollment_features(log_df):
 
     log_df.reset_index(inplace=True)
     log_df.set_index('enrollment_id', drop=True, inplace=True)
+    log_df['username'] = log_df['username'].astype('category')
+    log_df['course_id'] = log_df['course_id'].astype('category')
 
     graph_vectors = load_course_embedding()
 
-    feature_df = DataFrame()
+    enrollment_ids = log_df.index.unique()
+
+    feature_df = DataFrame(index=enrollment_ids, columns=[
+        'late_day',
+        'leave_early_day',
+        'first_dayofyear',
+        'last_dayofyear',
+        'start_dayofyear',
+        'max_rest',
+        'min_rest',
+        'mean_rest',
+        'longgest_streak',
+        'current_streak',
+        'mean_streak',
+        'course_0',
+        'course_1',
+        'course_2',
+        'course_3'
+    ])
     feature_df.index.names = ['enrollment_id']
 
     # for index in log_df.index.unique()[:12000]:
-    for index in log_df.index.unique():
-        print('enrollment %d' % index)
+    for enrollment_id in enrollment_ids:
+        print('enrollment %d' % enrollment_id)
         # import pdb; pdb.set_trace()
 
-        course_id = log_df.loc[index, 'course_id']
+        course_id = log_df.loc[enrollment_id, 'course_id']
         if isinstance(course_id, Series):
             course_id = course_id.iloc[0]
 
-        start_date_series = log_df.loc[index, 'start_date']
-        if isinstance(start_date_series, Series):
-            start_date = start_date_series.iloc[0]
-            start_dayofyear = start_date.dayofyear
-        elif isinstance(start_date_series, Timestamp):
-            start_date = start_date_series
-            start_dayofyear = start_date.dayofyear
-        else:
-            raise NotImplementedError()
+        start_date = log_df.loc[enrollment_id, 'start_date']
+        if isinstance(start_date, Series):
+            start_date = start_date.iloc[0]
 
-        date_series = log_df.loc[index, 'date']
+        start_dayofyear = start_date.dayofyear
+
+        date_series = log_df.loc[enrollment_id, 'date']
         if isinstance(date_series, Series):
             first_day = date_series.iloc[0]
             last_day = date_series.iloc[-1]
@@ -599,20 +615,22 @@ def extract_enrollment_features(log_df):
 
         # import pdb; pdb.set_trace()
 
-        feature_df.set_value(index, 'late_day', (first_day - start_date).days)
-        feature_df.set_value(index, 'leave_early_day', (last_day - start_date).days)
-        feature_df.set_value(index, 'first_dayofyear', first_day.dayofyear)
-        feature_df.set_value(index, 'last_dayofyear', last_day.dayofyear)
-        feature_df.set_value(index, 'start_dayofyear', start_dayofyear)
-        feature_df.set_value(index, 'max_rest', max_rest)
-        feature_df.set_value(index, 'min_rest', min_rest)
-        feature_df.set_value(index, 'mean_rest', mean_rest)
-        feature_df.set_value(index, 'longgest_streak', longgest_streak)
-        feature_df.set_value(index, 'current_streak', current_streak)
-        feature_df.set_value(index, 'mean_streak', mean_streak)
+        feature_df.set_value(enrollment_id, 'late_day', (first_day - start_date).days)
+        feature_df.set_value(enrollment_id, 'leave_early_day', (last_day - start_date).days)
+        feature_df.set_value(enrollment_id, 'first_dayofyear', first_day.dayofyear)
+        feature_df.set_value(enrollment_id, 'last_dayofyear', last_day.dayofyear)
+        feature_df.set_value(enrollment_id, 'start_dayofyear', start_dayofyear)
+        feature_df.set_value(enrollment_id, 'max_rest', max_rest)
+        feature_df.set_value(enrollment_id, 'min_rest', min_rest)
+        feature_df.set_value(enrollment_id, 'mean_rest', mean_rest)
+        feature_df.set_value(enrollment_id, 'longgest_streak', longgest_streak)
+        feature_df.set_value(enrollment_id, 'current_streak', current_streak)
+        feature_df.set_value(enrollment_id, 'mean_streak', mean_streak)
 
         for i, value in enumerate(graph_vectors[course_id]):
-            feature_df.set_value(index, 'course_%d' % i, value)
+            feature_df.set_value(enrollment_id, 'course_%d' % i, value)
+
+        # import pdb; pdb.set_trace()
 
     print('done')
 
