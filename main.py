@@ -2,7 +2,7 @@
 from __future__ import print_function
 
 from sklearn.cross_validation import train_test_split
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, accuracy_score
 
 from kdd2015.data import load_data, to_submission
 from kdd2015.model import build_model
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     model.fit(
         [x_time_series_train, x_enrollment_train], y_train,
         # x_train[:, :, rnn_features], y_train,
-        batch_size=8,
+        batch_size=64,
         nb_epoch=10,
         show_accuracy=True,
         # class_weight={0: 0.7929269466244131, 1: 0.2070730533755869}
@@ -33,12 +33,13 @@ if __name__ == '__main__':
 
     predicts_cv = model.predict_proba(
         [x_time_series_train, x_enrollment_train],
-        batch_size=8)
+        batch_size=64)
     print('roc_auc_score of cv %f' % roc_auc_score(y_train, predicts_cv))
+    print('accuracy_score of cv %f' % accuracy_score(y_train, predicts_cv.round()))
     predicts = model.predict_proba(
         [x_time_series_test, x_enrollment_test],
         # x_test[:, :, rnn_features],
-        batch_size=8)
+        batch_size=64)
     to_submission(predicts)
 
     # errors(x_train, y_train, predicts)
