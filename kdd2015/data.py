@@ -446,6 +446,8 @@ def load_feature():
             enrollment_df, truth_df, log_df, course_df, object_df = load_df()
             enrollment_feature_df = extract_enrollment_features(log_df)
             feature_store['enrollment_feature_df'] = enrollment_feature_df
+        else:
+            enrollment_feature_df = feature_store['enrollment_feature_df']
 
     # return enrollment_feature_df
     return time_series_feature_df, enrollment_feature_df
