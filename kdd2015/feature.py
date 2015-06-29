@@ -456,7 +456,7 @@ def store_course_embedding():
 
 def load_course_embedding():
     graph_mapping = {}
-    graph_vectors = []
+    graph_vectors = {}
 
     if not (os.path.isfile('course_node_mapping.txt') and
             os.path.isfile('course_edges.txt')):
