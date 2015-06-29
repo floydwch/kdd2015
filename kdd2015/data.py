@@ -439,10 +439,14 @@ def load_feature():
         else:
             time_series_feature_df = feature_store['time_series_feature_df']
 
+    print('done')
+
+    with HDFStore('features.h5') as feature_store:
         if 'enrollment_feature_df' not in feature_store:
             enrollment_df, truth_df, log_df, course_df, object_df = load_df()
             enrollment_feature_df = extract_enrollment_features(log_df)
 
+    # return enrollment_feature_df
     return time_series_feature_df, enrollment_feature_df
 
 
@@ -622,11 +626,13 @@ def load_data():
         del truth_df
 
         with h5py.File('data.h5', 'w') as h5f:
+            print('write to h5')
             h5f.create_dataset('x_time_series_train', data=x_time_series_train)
             h5f.create_dataset('x_time_series_test', data=x_time_series_test)
             h5f.create_dataset('x_enrollment_train', data=x_enrollment_train)
             h5f.create_dataset('x_enrollment_test', data=x_enrollment_test)
             h5f.create_dataset('y_train', data=y_train)
+            print('done')
     else:
         with h5py.File('data.h5', 'r') as h5f:
             x_time_series_train = h5f['x_time_series_train'][:]
