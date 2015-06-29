@@ -357,7 +357,7 @@ def extract_time_series_features(enrollment_df, log_df):
     enrollment_df = enrollment_df[['date', 'username', 'course_id']]
     enrollment_df.index = enrollment_df.index.droplevel(1)
 
-    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()[:3000]]
+    records = [(i, enrollment_df.loc[i, 'date'].values, enrollment_df.loc[i, 'username'].iloc[0]) for i in enrollment_df.index.unique()[:100]]
 
     log_df.sortlevel(2, inplace=True)
 
@@ -477,7 +477,8 @@ def load_course_embedding():
             line = line.split()
             i = int(line[0])
             vectors = list(map(float, line[1:]))
-            graph_vectors.append([graph_mapping[i]] + vectors)
+            # graph_vectors.append([graph_mapping[i]] + vectors)
+            graph_vectors[graph_mapping[i]] = vectors
 
     return graph_vectors
 
@@ -505,13 +506,19 @@ def append_graph_features(feature_df):
 
 
 def extract_enrollment_features(log_df):
+    print('extract enrollment features')
+
     log_df.reset_index(inplace=True)
     log_df.set_index('enrollment_id', drop=True, inplace=True)
+
+    graph_vectors = load_course_embedding()
 
     feature_df = DataFrame()
     feature_df.index.names = ['enrollment_id']
 
-    for index in log_df.index.unique()[:3000]:
+    # for index in log_df.index.unique()[:12000]:
+    for index in log_df.index.unique():
+        print('enrollment %d' % index)
         # import pdb; pdb.set_trace()
 
         course_id = log_df.loc[index, 'course_id']
@@ -592,7 +599,6 @@ def extract_enrollment_features(log_df):
 
         # import pdb; pdb.set_trace()
 
-        feature_df.set_value(index, 'course_id', course_id)
         feature_df.set_value(index, 'late_day', (first_day - start_date).days)
         feature_df.set_value(index, 'leave_early_day', (last_day - start_date).days)
         feature_df.set_value(index, 'first_dayofyear', first_day.dayofyear)
@@ -605,11 +611,9 @@ def extract_enrollment_features(log_df):
         feature_df.set_value(index, 'current_streak', current_streak)
         feature_df.set_value(index, 'mean_streak', mean_streak)
 
+        for i, value in enumerate(graph_vectors[course_id]):
+            feature_df.set_value(index, 'course_%d' % i, value)
 
-    feature_df.reset_index(inplace=True)
-    feature_df = append_graph_features(feature_df)
-    feature_df.set_index('enrollment_id', inplace=True)
-
-    del feature_df['course_id']
+    print('done')
 
     return feature_df
