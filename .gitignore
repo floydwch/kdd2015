@@ -1,0 +1,15 @@
+*.csv
+*.txt
+*.h5
+*.pickle
+*.pyc
+*.sqlite
+.DS_Store
+*.log
+.*/
+__pycache__/
+downloads/
+startup/
+static/
+*.sublime-project
+*.sublime-workspace
