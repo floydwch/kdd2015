@@ -12,6 +12,7 @@ from pandas.tseries.offsets import DateOffset
 # from more_itertools import flatten
 import pandas as pd
 import numpy as np
+from scipy.stats.mstats import zscore
 # from treelib import Tree
 # from numpy import datetime64
 import h5py
@@ -34,9 +35,11 @@ def load_csv():
     truth_df.columns = ['enrollment_id', 'dropout']
 
     log_df = pd.concat([log_train, log_test], ignore_index=True)
+    # log_df = log_train
     log_df = pd.merge(log_df, truth_df, how='left', on='enrollment_id')
     raw_enrollment_df = pd.concat(
         [enrollment_train, enrollment_test], ignore_index=True)
+    # raw_enrollment_df = enrollment_train
     log_df = pd.merge(log_df, raw_enrollment_df, how='left', on='enrollment_id')
 
     raw_enrollment_df.set_index('enrollment_id', inplace=True)
@@ -386,10 +389,26 @@ def to_submission(result):
     )
 
 
-def load_feature():
-    from .feature import extract_time_series_features, extract_enrollment_features
+def load_feature(extend):
+    from .feature import extract_time_series_features, extract_enrollment_features, cal_sample_weight, extend_features, append_course_repr2, append_user_repr
 
     with HDFStore('features.h5') as feature_store:
+
+        if 'enrollment_ids' not in feature_store:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+
+            # enrollment_ids = np.sort(np.random.choice(
+            #         enrollment_df.index.get_level_values('enrollment_id').unique(),
+            #         12000, False))
+            # import pdb; pdb.set_trace()
+
+            enrollment_ids = enrollment_df.index.get_level_values('enrollment_id').unique()
+
+            feature_store['enrollment_ids'] = Series(enrollment_ids)
+
+        else:
+            enrollment_ids = feature_store['enrollment_ids'].values
+
         if 'time_series_feature_df' not in feature_store:
             enrollment_df, truth_df, log_df, course_df, object_df = load_df()
 
@@ -432,54 +451,146 @@ def load_feature():
                 log_df = pd.read_pickle('log_object_df.pickle')
 
             log_df.reset_index(inplace=True)
+
+            # import pdb; pdb.set_trace()
             time_series_feature_df = extract_time_series_features(
-                enrollment_df, log_df)
+                enrollment_df, log_df, enrollment_ids)
+
+            # import pdb; pdb.set_trace()
 
             feature_store['time_series_feature_df'] = time_series_feature_df
         else:
             time_series_feature_df = feature_store['time_series_feature_df']
 
-    print('done')
+        print('done')
 
     with HDFStore('features.h5') as feature_store:
         if 'enrollment_feature_df' not in feature_store:
             enrollment_df, truth_df, log_df, course_df, object_df = load_df()
-            enrollment_feature_df = extract_enrollment_features(log_df)
 
-    # return enrollment_feature_df
-    return time_series_feature_df, enrollment_feature_df
+            if not (os.path.isfile('log_object_df.pickle')):
+
+                log_df.reset_index(inplace=True)
+                object_df.drop_duplicates('object', inplace=True)
+
+                log_df = log_df.merge(
+                    object_df[['object', 'category', 'week']],
+                    how='left', on='object')
+
+                log_df['object'] = log_df['object'].astype('category')
+                log_df['category'] = log_df['category'].astype('category')
+                log_df['event'] = log_df['event'].astype('category')
+                log_df['source'] = log_df['source'].astype('category')
+
+                log_df['event'].cat.add_categories([
+                    'access_server',
+                    'access_browser',
+                    'problem_server',
+                    'problem_browser'
+                ], inplace=True)
+
+                del object_df
+
+                selected_indices = [
+                    'enrollment_id', 'username', 'course_id', 'date'
+                ]
+                log_df.set_index(selected_indices, inplace=True)
+
+                log_df.to_pickle('log_object_df.pickle')
+            else:
+                del object_df
+                del log_df
+
+                log_df = pd.read_pickle('log_object_df.pickle')
+
+            log_df.reset_index(inplace=True)
+
+            enrollment_feature_df = extract_enrollment_features(
+                log_df, course_df, truth_df, enrollment_df, enrollment_ids)
+
+            feature_store['enrollment_feature_df'] = enrollment_feature_df
+        else:
+            enrollment_feature_df = feature_store['enrollment_feature_df']
+
+        if extend == 1:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+            enrollment_feature_df = extend_features(enrollment_feature_df, enrollment_df, log_df)
+            feature_store['enrollment_feature_df'] = enrollment_feature_df
+
+        if extend == 2:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+            feature_store['old_enrollment_feature_df'] = enrollment_feature_df
+            enrollment_feature_df = append_course_repr2(enrollment_feature_df, log_df)
+            feature_store['enrollment_feature_df'] = enrollment_feature_df
+
+        if extend == 3:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+            feature_store['old_old_enrollment_feature_df'] = enrollment_feature_df
+            enrollment_feature_df = append_user_repr(enrollment_feature_df, log_df)
+            feature_store['enrollment_feature_df'] = enrollment_feature_df
+
+    with HDFStore('features.h5') as feature_store:
+        if 'sample_weight_df' not in feature_store:
+            enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+            sample_weight_df = cal_sample_weight(log_df, enrollment_ids)
+            feature_store['sample_weight_df'] = sample_weight_df
+        else:
+            sample_weight_df = feature_store['sample_weight_df']
+
+    enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+    left_df = enrollment_feature_df.reset_index()
+    # left_df.rename(columns={b'enrollment_id': 'enrollment_id'}, inplace=True)
+    analysis_df = pd.merge(left_df, truth_df, on='enrollment_id')
+
+    # enrollment_feature_df = extend_features(enrollment_feature_df)
+
+    return time_series_feature_df, enrollment_feature_df, enrollment_ids, analysis_df, sample_weight_df
 
 
 def load_data():
     if not os.path.isfile('data.h5'):
         enrollment_df, truth_df, log_df, course_df, object_df = load_df()
-        time_series_feature_df, enrollment_feature_df = load_feature()
+        time_series_feature_df, enrollment_feature_df, enrollment_ids, analysis_df, sample_weight_df = load_feature(False)
 
         print('feature loaded')
 
-        time_series_feature_df.set_index('enrollment_id', inplace=True)
+        # time_series_feature_df.set_index('enrollment_id', inplace=True)
         truth_df.set_index('enrollment_id', inplace=True)
 
-        time_series_feature_truth_df = time_series_feature_df.join(truth_df)
+        # import ipdb; ipdb.set_trace()
+
+        normal_enrollment_feature_df = enrollment_feature_df.apply(zscore, axis=0)
+
+        # time_series_feature_truth_df = time_series_feature_df.join(truth_df)
         enrollment_feature_truth_df = enrollment_feature_df.join(truth_df)
+
+        # time_series_feature_truth_df = time_series_feature_df.join(truth_df)
+        normal_enrollment_feature_truth_df = normal_enrollment_feature_df.join(truth_df)
+
+        # import ipdb; ipdb.set_trace()
 
         del time_series_feature_df
         del enrollment_feature_df
 
         print('feature_truth joined')
 
-        train_time_series_df = time_series_feature_truth_df.dropna()
-        test_time_series_df = time_series_feature_truth_df[
-            time_series_feature_truth_df['dropout'].isnull()
-        ]
+        # train_time_series_df = time_series_feature_truth_df.dropna()
+        # test_time_series_df = time_series_feature_truth_df[
+            # time_series_feature_truth_df['dropout'].isnull()
+        # ]
 
         train_enrollment_df = enrollment_feature_truth_df.dropna()
         test_enrollment_df = enrollment_feature_truth_df[
             enrollment_feature_truth_df['dropout'].isnull()
         ]
 
-        del time_series_feature_truth_df
-        del enrollment_feature_truth_df
+        train_normal_enrollment_df = normal_enrollment_feature_truth_df.dropna()
+        test_normal_enrollment_df = normal_enrollment_feature_truth_df[
+            normal_enrollment_feature_truth_df['dropout'].isnull()
+        ]
+
+        # del time_series_feature_truth_df
+        # del enrollment_feature_truth_df
 
         masked_time_series_features = [
             # 'access_server',
@@ -558,31 +669,33 @@ def load_data():
             # 'last_day',
         ]
 
-        for column in ['username', 'course_id', 'date', 'dropout'] + \
-                masked_time_series_features:
+        # for column in ['username', 'course_id', 'date', 'dropout'] + \
+        #         masked_time_series_features:
 
-            del train_time_series_df[column]
-            del test_time_series_df[column]
+            # del train_time_series_df[column]
+            # del test_time_series_df[column]
 
-        for column in ['dropout'] + \
-                masked_enrollment_features:
-
+        for column in ['dropout'] + masked_enrollment_features:
             del train_enrollment_df[column]
             del test_enrollment_df[column]
 
         # import pdb; pdb.set_trace()
 
-        x_time_series_train = np.array(
-            np.split(
-                train_time_series_df.values,
-                len(train_time_series_df.index.unique())
-            )
-        )
-        del train_time_series_df
+        # x_time_series_train = np.array(
+        #     np.split(
+        #         train_time_series_df.values,
+        #         len(train_time_series_df.index.unique())
+        #     )
+        # )
+        # del train_time_series_df
+
+        # import pdb; pdb.set_trace()
 
         x_enrollment_train = train_enrollment_df.values
         del train_enrollment_df
 
+        x_normal_enrollment_train = train_normal_enrollment_df.values
+        del train_normal_enrollment_df
 
         # x_train[:, :, :9] = np.vectorize(log)(x_train[:, :, :9] + 1)
 
@@ -597,16 +710,19 @@ def load_data():
         # for i in range(squeeze_timestep, 30, squeeze_timestep):
         #     squeezed_x_train += x_train[:, i:i+squeeze_timestep]
 
-        x_time_series_test = np.array(
-            np.split(
-                test_time_series_df.values,
-                len(test_time_series_df.index.unique())
-            )
-        )
-        del test_time_series_df
+        # x_time_series_test = np.array(
+        #     np.split(
+        #         test_time_series_df.values,
+        #         len(test_time_series_df.index.unique())
+        #     )
+        # )
+        # del test_time_series_df
 
         x_enrollment_test = test_enrollment_df.values
         del test_enrollment_df
+
+        x_normal_enrollment_test = test_normal_enrollment_df.values
+        del test_normal_enrollment_df
 
         # x_test[:, :, :9] = np.vectorize(log)(x_test[:, :, :9] + 1)
 
@@ -621,24 +737,48 @@ def load_data():
         # x_train = squeezed_x_train
         # x_test = squeezed_x_test
 
-        y_train = truth_df.values.flatten()[:x_enrollment_train.shape[0]]
+        # y_train = truth_df.values.flatten()[:x_enrollment_train.shape[0]]
+        y_train = truth_df['dropout'].values
 
         del truth_df
 
         with h5py.File('data.h5', 'w') as h5f:
             print('write to h5')
-            h5f.create_dataset('x_time_series_train', data=x_time_series_train)
-            h5f.create_dataset('x_time_series_test', data=x_time_series_test)
+            # h5f.create_dataset('x_time_series_train', data=x_time_series_train)
+            # h5f.create_dataset('x_time_series_test', data=x_time_series_test)
             h5f.create_dataset('x_enrollment_train', data=x_enrollment_train)
             h5f.create_dataset('x_enrollment_test', data=x_enrollment_test)
+            h5f.create_dataset('x_normal_enrollment_train', data=x_normal_enrollment_train)
+            h5f.create_dataset('x_normal_enrollment_test', data=x_normal_enrollment_test)
             h5f.create_dataset('y_train', data=y_train)
+            h5f.create_dataset('enrollment_ids', data=enrollment_ids)
             print('done')
     else:
+        time_series_feature_df, enrollment_feature_df, enrollment_ids, analysis_df, sample_weight_df = load_feature(False)
+
         with h5py.File('data.h5', 'r') as h5f:
-            x_time_series_train = h5f['x_time_series_train'][:]
-            x_time_series_test = h5f['x_time_series_test'][:]
+            # x_time_series_train = h5f['x_time_series_train'][:]
+            # x_time_series_test = h5f['x_time_series_test'][:]
             x_enrollment_train = h5f['x_enrollment_train'][:]
             x_enrollment_test = h5f['x_enrollment_test'][:]
+            x_normal_enrollment_train = h5f['x_normal_enrollment_train'][:]
+            x_normal_enrollment_test = h5f['x_normal_enrollment_test'][:]
             y_train = h5f['y_train'][:]
+            enrollment_ids = h5f['enrollment_ids'][:]
 
-    return x_time_series_train, x_enrollment_train, y_train, x_time_series_test, x_enrollment_test
+    # return x_time_series_train, x_enrollment_train, y_train, x_time_series_test, x_enrollment_test
+    return x_enrollment_train, x_normal_enrollment_train, x_enrollment_test, x_normal_enrollment_test, y_train, enrollment_ids, sample_weight_df
+
+
+def clear_features(feature_set):
+    with HDFStore('features.h5') as feature_store:
+        if feature_set == 'time_series':
+            del feature_store['time_series_feature_df']
+        elif feature_set == 'enrollment':
+            del feature_store['enrollment_feature_df']
+        elif feature_set == 'enrollment_ids':
+            del feature_store['enrollment_ids']
+        elif feature_set == 'sample_weight_df':
+            del feature_store['sample_weight_df']
+        else:
+            raise NotImplementedError()

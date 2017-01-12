@@ -2,6 +2,7 @@
 # from ptpdb import set_trace
 # from dateutil import parser
 # import pandas as pd
+import numpy as np
 
 
 def fetch_enrollment(logs_df, enrollment_id):
@@ -52,3 +53,18 @@ def all_time_bound():
         print(course_id, start_time, end_time, (end_time - start_time).days)
 
     print('len:', len(skip))
+
+
+def errors(x_train, y_train, predicts, index, on):
+    from .data import load_df
+    enrollment_df, truth_df, log_df, course_df, object_df = load_df()
+
+    abs_errors = np.abs(y_train - predicts)
+    uncertain_errors = 1 - np.abs(abs_errors - 0.5)
+    print('uncertain_errors(top 30) on %s' % on)
+    print(uncertain_errors.argsort()[::-1][:30])
+    print('abs_errors(top 30) on %s' % on)
+    print(abs_errors.argsort()[::-1][:30])
+
+    import pdb; pdb.set_trace()
+    # truth_df.iloc[120]
